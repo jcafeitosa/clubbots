@@ -95,6 +95,7 @@ func (s *cacheHitStubAgent) IsRunning() bool              { return false }
 func (s *cacheHitStubAgent) Model() string                { return "test-model" }
 func (s *cacheHitStubAgent) ProviderName() string         { return "test" }
 func (s *cacheHitStubAgent) Provider() providers.Provider { return nil }
+func (s *cacheHitStubAgent) InitialPrompt() string         { return "" }
 
 // TestResolveAgentUUIDCached_CacheHitSkipsDBPath pins the fast path: when the
 // caller passes an agent_key AND the Loop is cached in the router AND the
