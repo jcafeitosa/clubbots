@@ -20,6 +20,7 @@ func NewGitMethods() *GitMethods { return &GitMethods{} }
 func (m *GitMethods) Register(router *gateway.MethodRouter) {
 	router.Register(protocol.MethodGitCommitMessage, m.handleCommitMessage)
 	router.Register(protocol.MethodGitCodeReview, m.handleCodeReview)
+	router.Register(protocol.MethodGitSecurityReview, m.handleSecurityReview)
 }
 
 type gitParams struct {
@@ -90,4 +91,35 @@ func countStagedFiles(diff string) int {
 		}
 	}
 	return count
+}
+
+func (m *GitMethods) handleSecurityReview(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	var params gitParams
+	if req.Params != nil {
+		json.Unmarshal(req.Params, &params)
+	}
+
+	diff, err := runGitCmd(params.Path, "diff", "--staged")
+	if err != nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, i18n.T(locale, i18n.MsgInvalidRequest, "git diff failed: "+err.Error())))
+		return
+	}
+	if diff == "" {
+		diff, _ = runGitCmd(params.Path, "diff") // fallback to unstaged
+	}
+
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{
+		"diff": diff,
+		"prompt": `Review this diff for security issues. Check for:
+1. Secrets or credentials in code (API keys, tokens, passwords)
+2. SQL/command injection vulnerabilities
+3. Path traversal risks
+4. XSS vulnerabilities
+5. Insecure cryptography or hashing
+6. Missing input validation
+7. Authentication/authorization bypasses
+
+Report each finding with: severity (critical/high/medium/low), file, line context, description, and fix suggestion.`,
+	}))
 }

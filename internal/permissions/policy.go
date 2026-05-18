@@ -362,6 +362,7 @@ func isReadMethod(method string) bool {
 		// Git helpers
 		protocol.MethodGitCommitMessage,
 		protocol.MethodGitCodeReview,
+		protocol.MethodGitSecurityReview,
 
 		// Cron read
 		protocol.MethodCronList,
@@ -377,6 +378,7 @@ func isReadMethod(method string) bool {
 		// Usage / quota
 		protocol.MethodUsageGet,
 		protocol.MethodUsageSummary,
+		protocol.MethodUsageInsights,
 		protocol.MethodQuotaUsage,
 
 		// Heartbeat read

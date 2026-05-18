@@ -53,6 +53,7 @@ const (
 	// Git helpers
 	MethodGitCommitMessage = "git.commit_message"
 	MethodGitCodeReview    = "git.code_review"
+	MethodGitSecurityReview = "git.security_review"
 
 	// System
 	MethodConnect = "connect"
@@ -93,6 +94,7 @@ const (
 
 	MethodUsageGet     = "usage.get"
 	MethodUsageSummary = "usage.summary"
+	MethodUsageInsights = "usage.insights"
 
 	MethodQuotaUsage = "quota.usage"
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
+	"time"
 
 	"github.com/nextlevelbuilder/goclaw/internal/gateway"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
@@ -35,6 +36,7 @@ func NewUsageMethods(sessStore store.SessionStore) *UsageMethods {
 func (m *UsageMethods) Register(router *gateway.MethodRouter) {
 	router.Register(protocol.MethodUsageGet, m.handleGet)
 	router.Register(protocol.MethodUsageSummary, m.handleSummary)
+	router.Register(protocol.MethodUsageInsights, m.handleInsights)
 }
 
 func (m *UsageMethods) handleGet(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
@@ -146,4 +148,36 @@ func extractAgentIDFromKey(key string) string {
 		return rest
 	}
 	return key
+}
+
+// --- usage.insights ---
+
+func (m *UsageMethods) handleInsights(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	result := m.sessions.ListPagedRich(ctx, store.SessionListOpts{Limit: 200})
+	now := time.Now()
+
+	dayMap := map[string]map[string]int64{}
+	sessions := result.Sessions
+	totalSessions := len(sessions)
+	var totalTokensIn, totalTokensOut int64
+
+	for _, s := range sessions {
+		day := s.Created.Format("2006-01-02")
+		if _, ok := dayMap[day]; !ok {
+			dayMap[day] = map[string]int64{}
+		}
+		dayMap[day]["sessions"]++
+		dayMap[day]["tokens_in"] += s.InputTokens
+		dayMap[day]["tokens_out"] += s.OutputTokens
+		totalTokensIn += s.InputTokens
+		totalTokensOut += s.OutputTokens
+	}
+
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{
+		"totalSessions":  totalSessions,
+		"totalTokensIn":  totalTokensIn,
+		"totalTokensOut": totalTokensOut,
+		"days":           dayMap,
+		"since":          now.Add(-30 * 24 * time.Hour),
+	}))
 }
