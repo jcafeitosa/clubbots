@@ -9,6 +9,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/gateway"
 	httpapi "github.com/nextlevelbuilder/goclaw/internal/http"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
+	"github.com/nextlevelbuilder/goclaw/internal/providers"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
@@ -31,6 +32,12 @@ func (m *SessionsMethods) Register(router *gateway.MethodRouter) {
 	router.Register(protocol.MethodSessionsDelete, m.handleDelete)
 	router.Register(protocol.MethodSessionsReset, m.handleReset)
 	router.Register(protocol.MethodSessionsCompact, m.handleCompact)
+	router.Register(protocol.MethodSessionsRecap, m.handleRecap)
+	router.Register(protocol.MethodSessionsExport, m.handleExport)
+	router.Register(protocol.MethodSessionsFork, m.handleFork)
+	router.Register(protocol.MethodSessionsRewind, m.handleRewind)
+	router.Register(protocol.MethodSessionsGoalSet, m.handleGoalSet)
+	router.Register(protocol.MethodSessionsGoalStatus, m.handleGoalStatus)
 }
 
 type sessionsListParams struct {
@@ -292,4 +299,241 @@ func (m *SessionsMethods) handleCompact(ctx context.Context, client *gateway.Cli
 		"kept":     keepLast,
 	}))
 	emitAudit(m.eventBus, client, "session.compacted", "session", params.Key)
+}
+
+// --- sessions.recap ---
+
+type sessionsRecapParams struct {
+	SessionKey string `json:"sessionKey"`
+}
+
+func (m *SessionsMethods) handleRecap(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	var params sessionsRecapParams
+	if req.Params != nil {
+		json.Unmarshal(req.Params, &params)
+	}
+	if params.SessionKey == "" {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgRequired, "sessionKey")))
+		return
+	}
+	if !requireSessionOwner(ctx, m.sessions, m.cfg, client, req.ID, params.SessionKey) {
+		return
+	}
+
+	sess := m.sessions.Get(ctx, params.SessionKey)
+	if sess == nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "session")))
+		return
+	}
+
+	payload := map[string]any{
+		"sessionKey":   sess.Key,
+		"label":        sess.Label,
+		"messageCount": len(sess.Messages),
+		"totalTokens":  sess.InputTokens + sess.OutputTokens,
+		"created":      sess.Created,
+		"updated":      sess.Updated,
+		"model":        sess.Model,
+		"provider":     sess.Provider,
+	}
+	client.SendResponse(protocol.NewOKResponse(req.ID, payload))
+}
+
+// --- sessions.export ---
+
+func (m *SessionsMethods) handleExport(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	var params sessionsRecapParams
+	if req.Params != nil {
+		json.Unmarshal(req.Params, &params)
+	}
+	if params.SessionKey == "" {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgRequired, "sessionKey")))
+		return
+	}
+	if !requireSessionOwner(ctx, m.sessions, m.cfg, client, req.ID, params.SessionKey) {
+		return
+	}
+
+	sess := m.sessions.Get(ctx, params.SessionKey)
+	if sess == nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "session")))
+		return
+	}
+
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{
+		"session": sess,
+	}))
+}
+
+// --- sessions.fork ---
+
+type sessionsForkParams struct {
+	SessionKey string `json:"sessionKey"`
+	NewLabel   string `json:"label,omitempty"`
+}
+
+func (m *SessionsMethods) handleFork(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	var params sessionsForkParams
+	if req.Params != nil {
+		json.Unmarshal(req.Params, &params)
+	}
+	if params.SessionKey == "" {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgRequired, "sessionKey")))
+		return
+	}
+	if !requireSessionOwner(ctx, m.sessions, m.cfg, client, req.ID, params.SessionKey) {
+		return
+	}
+
+	sess := m.sessions.Get(ctx, params.SessionKey)
+	if sess == nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "session")))
+		return
+	}
+
+	// Derive new session key: append -fork-<timestamp>
+	newKey := params.SessionKey + "-fork"
+	newLabel := params.NewLabel
+	if newLabel == "" {
+		newLabel = (sess.Label + " (fork)")
+	}
+
+	// Create fork via GetOrCreate + SetHistory
+	forkSess := m.sessions.GetOrCreate(ctx, newKey)
+	forkSess.Messages = make([]providers.Message, len(sess.Messages))
+	copy(forkSess.Messages, sess.Messages)
+	m.sessions.SetLabel(ctx, newKey, newLabel)
+	m.sessions.SetHistory(ctx, newKey, forkSess.Messages)
+	m.sessions.Save(ctx, newKey)
+
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{
+		"sessionKey": newKey,
+		"label":      newLabel,
+	}))
+}
+
+// --- sessions.rewind ---
+
+type sessionsRewindParams struct {
+	SessionKey string `json:"sessionKey"`
+	Turns      int    `json:"turns"` // number of turns to undo (default 1)
+}
+
+func (m *SessionsMethods) handleRewind(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	var params sessionsRewindParams
+	if req.Params != nil {
+		json.Unmarshal(req.Params, &params)
+	}
+	if params.SessionKey == "" {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgRequired, "sessionKey")))
+		return
+	}
+	if params.Turns <= 0 {
+		params.Turns = 1
+	}
+	if !requireSessionOwner(ctx, m.sessions, m.cfg, client, req.ID, params.SessionKey) {
+		return
+	}
+
+	sess := m.sessions.Get(ctx, params.SessionKey)
+	if sess == nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "session")))
+		return
+	}
+
+	// Remove last N user+assistant pairs (turns)
+	msgs := sess.Messages
+	removed := 0
+	for i := 0; i < params.Turns && len(msgs) > 0; i++ {
+		// Find last user message
+		lastUser := -1
+		for j := len(msgs) - 1; j >= 0; j-- {
+			if msgs[j].Role == "user" {
+				lastUser = j
+				break
+			}
+		}
+		if lastUser < 0 {
+			break
+		}
+		removed += len(msgs) - lastUser
+		msgs = msgs[:lastUser]
+	}
+
+	sess.Messages = msgs
+	m.sessions.TruncateHistory(ctx, params.SessionKey, len(msgs))
+	m.sessions.Save(ctx, params.SessionKey)
+
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{
+		"sessionKey":     params.SessionKey,
+		"removedTurns":   params.Turns,
+		"removedMessages": removed,
+		"remainingMessages": len(msgs),
+	}))
+}
+
+// --- sessions.goal ---
+
+type sessionsGoalParams struct {
+	SessionKey string `json:"sessionKey"`
+	Goal       string `json:"goal,omitempty"` // empty = get status only
+}
+
+func (m *SessionsMethods) handleGoalSet(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	var params sessionsGoalParams
+	if req.Params != nil {
+		json.Unmarshal(req.Params, &params)
+	}
+	if params.SessionKey == "" || params.Goal == "" {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgRequired, "sessionKey + goal")))
+		return
+	}
+
+	// Store goal in session metadata
+	m.sessions.SetSessionMetadata(ctx, params.SessionKey, map[string]string{
+		"goal":        params.Goal,
+		"goal_status": "active",
+	})
+
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{
+		"sessionKey": params.SessionKey,
+		"goal":       params.Goal,
+		"status":     "active",
+	}))
+}
+
+func (m *SessionsMethods) handleGoalStatus(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
+	locale := store.LocaleFromContext(ctx)
+	var params sessionsGoalParams
+	if req.Params != nil {
+		json.Unmarshal(req.Params, &params)
+	}
+	if params.SessionKey == "" {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInvalidRequest, i18n.T(locale, i18n.MsgRequired, "sessionKey")))
+		return
+	}
+
+	sess := m.sessions.Get(ctx, params.SessionKey)
+	if sess == nil {
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "session")))
+		return
+	}
+
+	goal := ""
+	goalStatus := ""
+	if sess.Metadata != nil {
+		goal = sess.Metadata["goal"]
+		goalStatus = sess.Metadata["goal_status"]
+	}
+
+	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{
+		"sessionKey": params.SessionKey,
+		"goal":       goal,
+		"status":     goalStatus,
+	}))
 }

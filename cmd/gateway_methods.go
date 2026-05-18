@@ -63,6 +63,9 @@ func registerAllMethods(server *gateway.Server, agents *agent.Router, sessStore 
 	// Phase 2: Usage (queries SessionStore for real token data)
 	methods.NewUsageMethods(sessStore).Register(router)
 
+	// Phase 2: Feedback
+	methods.NewFeedbackMethods().Register(router)
+
 	// Phase 2: Exec approval (always registered — returns empty when manager is nil)
 	methods.NewExecApprovalMethods(execApprovalMgr, msgBus).Register(router)
 

@@ -40,6 +40,15 @@ const (
 	MethodSessionsDelete  = "sessions.delete"
 	MethodSessionsReset   = "sessions.reset"
 	MethodSessionsCompact = "sessions.compact"
+	MethodSessionsRecap   = "sessions.recap"
+	MethodSessionsExport  = "sessions.export"
+	MethodSessionsFork    = "sessions.fork"
+	MethodSessionsRewind  = "sessions.rewind"
+	MethodSessionsGoalSet    = "sessions.goal.set"
+	MethodSessionsGoalStatus = "sessions.goal.status"
+
+	// Feedback
+	MethodFeedbackSend = "feedback.send"
 
 	// System
 	MethodConnect = "connect"

@@ -293,6 +293,10 @@ func isWriteMethod(method string) bool {
 		protocol.MethodSessionsReset,
 		protocol.MethodSessionsPatch,
 		protocol.MethodSessionsCompact,
+		protocol.MethodSessionsFork,
+		protocol.MethodSessionsRewind,
+		protocol.MethodSessionsGoalSet,
+		protocol.MethodFeedbackSend,
 		protocol.MethodCronCreate,
 		protocol.MethodCronUpdate,
 		protocol.MethodCronDelete,
@@ -347,6 +351,9 @@ func isReadMethod(method string) bool {
 		// Sessions read
 		protocol.MethodSessionsList,
 		protocol.MethodSessionsPreview,
+		protocol.MethodSessionsRecap,
+		protocol.MethodSessionsExport,
+		protocol.MethodSessionsGoalStatus,
 
 		// Skills read
 		protocol.MethodSkillsList,
