@@ -30,6 +30,26 @@ type EpisodicSummary struct {
 	RecallCount    int        `json:"recall_count" db:"recall_count"`
 	RecallScore    float64    `json:"recall_score" db:"recall_score"`         // running average of memory_search hit scores
 	LastRecalledAt *time.Time `json:"last_recalled_at,omitempty" db:"last_recalled_at"`
+
+	// Memory versioning — inspired by Claude Managed Agents memory versioning.
+	// Enables rollback, audit trail, and redaction.
+	Version     int       `json:"version" db:"version"`           // incremented on each update (starts at 1)
+	CreatedBy   string    `json:"created_by" db:"created_by"`     // agent_key or session that created this
+	UpdatedBy   string    `json:"updated_by" db:"updated_by"`     // agent_key or session that last modified
+	RedactedAt  *time.Time `json:"redacted_at,omitempty" db:"redacted_at"` // non-nil = content redacted
+	RedactedBy  string    `json:"redacted_by,omitempty" db:"redacted_by"`  // who redacted
+}
+
+// EpisodicVersion represents a historical version of an episodic summary.
+type EpisodicVersion struct {
+	ID          uuid.UUID `json:"id"`
+	EpisodicID  uuid.UUID `json:"episodic_id"`
+	Version     int       `json:"version"`
+	Summary     string    `json:"summary"`
+	KeyTopics   []string  `json:"key_topics"`
+	L0Abstract  string    `json:"l0_abstract"`
+	CreatedAt   time.Time `json:"created_at"`
+	CreatedBy   string    `json:"created_by"`
 }
 
 // EpisodicSearchResult is a search hit with L0 summary.
