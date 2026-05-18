@@ -116,6 +116,8 @@ type Loop struct {
 	toolPolicy      *tools.PolicyEngine    // optional: filters tools sent to LLM
 	agentToolPolicy *config.ToolPolicySpec // per-agent tool policy from DB (nil = no restrictions)
 	activeRuns      atomic.Int32           // number of currently executing runs
+	initialPrompt   string                 // auto-sent on first message of new session
+	maxTurns        int                    // max pipeline iterations per run (0 = unlimited)
 
 	// Per-session summarization lock: prevents concurrent summarize goroutines for the same session.
 	summarizeMu sync.Map // sessionKey → *sync.Mutex
@@ -298,7 +300,8 @@ type LoopConfig struct {
 	Provider         providers.Provider
 	Model            string
 	ContextWindow    int
-	MaxTokens        int // max output tokens per LLM call (0 = default 8192)
+	MaxTokens        int    // max output tokens per LLM call (0 = default 8192)
+	InitialPrompt    string // auto-sent as first user message on new sessions
 	MaxIterations    int
 	MaxToolCalls     int
 	Workspace        string
@@ -717,3 +720,6 @@ type runState struct {
 	// to prevent burning through all iterations when max_tokens is too low.
 	truncationRetries int
 }
+
+// InitialPrompt returns the agent initial prompt (empty if none configured).
+func (l *Loop) InitialPrompt() string { return l.initialPrompt }

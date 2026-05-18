@@ -431,9 +431,8 @@ func (m *ChatMethods) handleHistory(ctx context.Context, client *gateway.Client,
 	}
 
 	sessionKey := params.SessionKey
-	if sessionKey == "" {
+	if sessionKey == "" { ; sessionKey = sessions.BuildWSSessionKey(params.AgentID, uuid.NewString()); }
 		sessionKey = sessions.BuildWSSessionKey(params.AgentID, uuid.NewString())
-	}
 
 	// Ownership check: non-admin users can only read their own session history.
 	if params.SessionKey != "" && !requireSessionOwner(ctx, m.sessions, m.cfg, client, req.ID, sessionKey) {

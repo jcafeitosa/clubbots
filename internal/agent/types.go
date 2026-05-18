@@ -20,4 +20,5 @@ type Agent interface {
 	Model() string
 	ProviderName() string
 	Provider() providers.Provider
+	InitialPrompt() string
 }

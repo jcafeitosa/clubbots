@@ -33,6 +33,10 @@ const (
 	EventSubagentStart HookEvent = "subagent_start"
 	// EventSubagentStop fires when a sub-agent finishes.
 	EventSubagentStop HookEvent = "subagent_stop"
+	// EventTeammateIdle fires when a teammate agent becomes idle.
+	EventTeammateIdle HookEvent = "teammate_idle"
+	// EventTaskCompleted fires when a team task is completed.
+	EventTaskCompleted HookEvent = "task_completed"
 )
 
 // IsBlocking returns true when the event requires a synchronous allow/block

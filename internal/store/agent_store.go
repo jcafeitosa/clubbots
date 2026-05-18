@@ -257,6 +257,24 @@ var validPromptModes = map[string]bool{
 	"full": true, "task": true, "minimal": true, "none": true,
 }
 
+// ParseInitialPrompt returns the initial prompt auto-sent on new sessions.
+func (a *AgentData) ParseInitialPrompt() string {
+	if len(a.OtherConfig) == 0 {
+		return ""
+	}
+	var bag map[string]json.RawMessage
+	if json.Unmarshal(a.OtherConfig, &bag) != nil {
+		return ""
+	}
+	if v, ok := bag["initial_prompt"]; ok {
+		var s string
+		if json.Unmarshal(v, &s) == nil {
+			return s
+		}
+	}
+	return ""
+}
+
 // ParsePromptMode returns the configured prompt mode from OtherConfig JSONB.
 // Returns "" (defaults to "full") if not set or invalid.
 func (a *AgentData) ParsePromptMode() string {

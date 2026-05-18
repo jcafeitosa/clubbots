@@ -235,6 +235,7 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 		if contextWindow <= 0 {
 			contextWindow = config.DefaultContextWindow
 		}
+		initialPrompt := ag.ParseInitialPrompt()
 		maxIter := ag.MaxToolIterations
 		if maxIter <= 0 {
 			maxIter = config.DefaultMaxIterations
@@ -473,7 +474,8 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 			ModelRegistry:          deps.ModelRegistry,
 			ContextWindow:          contextWindow,
 			MaxTokens:              ag.ParseMaxTokens(),
-			MaxIterations:          maxIter,
+			InitialPrompt:         initialPrompt,
+		MaxIterations:          maxIter,
 			Workspace:              workspace,
 			DataDir:                dataDir,
 			RestrictToWs:           &restrictVal,
