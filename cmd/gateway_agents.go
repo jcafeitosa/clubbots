@@ -242,6 +242,7 @@ func buildSubagentToolsRegistry(
 	if secureCLIStore != nil {
 		execTool.SetSecureCLIStore(secureCLIStore)
 	}
+	reg.Register(tools.NewLSPTool())
 	return reg, execTool
 }
 
