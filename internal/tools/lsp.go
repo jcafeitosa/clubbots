@@ -100,50 +100,103 @@ func toInt(v any) (int, bool) {
 
 func (t *LSPTool) gotoDefinition(ctx context.Context, file string, line, col int) (string, error) {
 	if strings.HasSuffix(file, ".go") {
-		return t.goplsQuery(ctx, "definition", file, line, col)
+		return t.lspQuery(ctx, "definition", file, line, col)
 	}
 	return t.grepDefinition(ctx, file, line)
 }
 
 func (t *LSPTool) findReferences(ctx context.Context, file string, line, col int) (string, error) {
 	if strings.HasSuffix(file, ".go") {
-		return t.goplsQuery(ctx, "references", file, line, col)
+		return t.lspQuery(ctx, "references", file, line, col)
 	}
 	return t.grepReferences(ctx, file, line)
 }
 
 func (t *LSPTool) hover(ctx context.Context, file string, line, col int) (string, error) {
 	if strings.HasSuffix(file, ".go") {
-		return t.goplsQuery(ctx, "hover", file, line, col)
+		return t.lspQuery(ctx, "hover", file, line, col)
 	}
 	return t.grepHover(ctx, file, line)
 }
 
 func (t *LSPTool) documentSymbols(ctx context.Context, file string) (string, error) {
-	if strings.HasSuffix(file, ".go") {
-		return t.goplsQuery(ctx, "symbols", file, 0, 0)
-	}
-	return "", fmt.Errorf("lsp: symbols action requires .go file (gopls)")
+	return t.lspQuery(ctx, "symbols", file, 0, 0)
 }
 
-func (t *LSPTool) goplsQuery(ctx context.Context, action, file string, line, col int) (string, error) {
-	var args []string
-	switch action {
-	case "references":
-		args = []string{"references", file}
-	default:
-		args = []string{"query", file}
-		if col > 0 {
-			args = append(args, fmt.Sprintf(":#%d,%d", line, col))
-		} else if line > 0 {
-			args = append(args, fmt.Sprintf(":#%d", line))
-		}
+// lspConfig maps file extensions to language server commands.
+var lspConfig = map[string]struct {
+	binary string
+	query  []string // args template for "query" action (use {file}, {line}, {col})
+	refs   []string // args template for "references"
+	syms   []string // args template for "symbols"
+}{
+	".go":   {binary: "gopls", query: []string{"query", "{file}", ":#{line},{col}"}, refs: []string{"references", "{file}"}, syms: []string{"query", "{file}", ":#0,0"}},
+	".ts":   {binary: "typescript-language-server", query: []string{"--stdio"}, refs: nil, syms: nil},
+	".tsx":  {binary: "typescript-language-server", query: []string{"--stdio"}, refs: nil, syms: nil},
+	".js":   {binary: "typescript-language-server", query: []string{"--stdio"}, refs: nil, syms: nil},
+	".py":   {binary: "pyright", query: []string{"--stdio"}, refs: nil, syms: nil},
+	".rs":   {binary: "rust-analyzer", query: []string{"--stdio"}, refs: nil, syms: nil},
+}
+
+func (t *LSPTool) lspQuery(ctx context.Context, action, file string, line, col int) (string, error) {
+	ext := file[strings.LastIndex(file, "."):]
+	cfg, ok := lspConfig[ext]
+	if !ok {
+		return "", fmt.Errorf("no language server configured for %s files", ext)
 	}
 
-	cmd := exec.CommandContext(ctx, "gopls", args...)
+	switch action {
+	case "references":
+		if cfg.refs == nil {
+			return t.grepReferences(ctx, file, line)
+		}
+		return t.runLSP(ctx, cfg.binary, cfg.refs, file, line, col)
+	case "symbols":
+		if cfg.syms == nil {
+			return t.grepSymbols(ctx, file)
+		}
+		return t.runLSP(ctx, cfg.binary, cfg.syms, file, line, col)
+	default:
+		if cfg.query == nil {
+			return t.grepDefinition(ctx, file, line)
+		}
+		return t.runLSP(ctx, cfg.binary, cfg.query, file, line, col)
+	}
+}
+
+func (t *LSPTool) runLSP(ctx context.Context, binary string, tmpl []string, file string, line, col int) (string, error) {
+	if _, err := exec.LookPath(binary); err != nil {
+		return "", fmt.Errorf("language server %q not installed (try: brew install %s)", binary, binary)
+	}
+	args := make([]string, len(tmpl))
+	for i, a := range tmpl {
+		a = strings.ReplaceAll(a, "{file}", file)
+		a = strings.ReplaceAll(a, "{line}", fmt.Sprintf("%d", line))
+		a = strings.ReplaceAll(a, "{col}", fmt.Sprintf("%d", col))
+		args[i] = a
+	}
+	cmd := exec.CommandContext(ctx, binary, args...)
 	out, err := cmd.Output()
 	if err != nil && len(out) == 0 {
-		return "", fmt.Errorf("gopls %s: %w", action, err)
+		return "", fmt.Errorf("%s %s: %w", binary, args[0], err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func (t *LSPTool) grepSymbols(ctx context.Context, file string) (string, error) {
+	ext := file[strings.LastIndex(file, "."):]
+	var pattern string
+	switch ext {
+	case ".go": pattern = `^func |^type `
+	case ".py": pattern = `^def |^class `
+	case ".ts", ".tsx", ".js": pattern = `^export (function|class|const|interface|type) `
+	case ".rs": pattern = `^pub (fn|struct|enum|trait|impl) `
+	default: pattern = `^func |^def |^class `
+	}
+	cmd := exec.CommandContext(ctx, "grep", "-n", pattern, file)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
 }
