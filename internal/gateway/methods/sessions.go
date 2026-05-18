@@ -323,7 +323,7 @@ func (m *SessionsMethods) handleRecap(ctx context.Context, client *gateway.Clien
 
 	sess := m.sessions.Get(ctx, params.SessionKey)
 	if sess == nil {
-		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "session")))
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "session", params.SessionKey)))
 		return
 	}
 
@@ -358,7 +358,7 @@ func (m *SessionsMethods) handleExport(ctx context.Context, client *gateway.Clie
 
 	sess := m.sessions.Get(ctx, params.SessionKey)
 	if sess == nil {
-		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "session")))
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "session", params.SessionKey)))
 		return
 	}
 
@@ -390,7 +390,7 @@ func (m *SessionsMethods) handleFork(ctx context.Context, client *gateway.Client
 
 	sess := m.sessions.Get(ctx, params.SessionKey)
 	if sess == nil {
-		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "session")))
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "session", params.SessionKey)))
 		return
 	}
 
@@ -441,7 +441,7 @@ func (m *SessionsMethods) handleRewind(ctx context.Context, client *gateway.Clie
 
 	sess := m.sessions.Get(ctx, params.SessionKey)
 	if sess == nil {
-		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "session")))
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "session", params.SessionKey)))
 		return
 	}
 
@@ -520,7 +520,7 @@ func (m *SessionsMethods) handleGoalStatus(ctx context.Context, client *gateway.
 
 	sess := m.sessions.Get(ctx, params.SessionKey)
 	if sess == nil {
-		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "session")))
+		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "session", params.SessionKey)))
 		return
 	}
 
