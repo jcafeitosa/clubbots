@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,22 +16,18 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 )
 
-// CodexCLIProvider implements Provider by shelling out to the `codex` CLI binary.
-// Follows the same subprocess pattern as ClaudeCLIProvider.
+// CodexCLIProvider shells out to `codex exec` for non-interactive chat.
 type CodexCLIProvider struct {
 	name         string
 	cliPath      string
 	defaultModel string
 	baseWorkDir  string
-	permMode     string
 	mu           sync.Mutex
 	sessionMu    sync.Map
 }
 
-// CodexCLIOption configures the provider.
 type CodexCLIOption func(*CodexCLIProvider)
 
-// WithCodexCLIName overrides the provider name.
 func WithCodexCLIName(name string) CodexCLIOption {
 	return func(p *CodexCLIProvider) {
 		if name != "" {
@@ -41,7 +36,6 @@ func WithCodexCLIName(name string) CodexCLIOption {
 	}
 }
 
-// WithCodexCLIModel sets the default model.
 func WithCodexCLIModel(model string) CodexCLIOption {
 	return func(p *CodexCLIProvider) {
 		if model != "" {
@@ -50,7 +44,6 @@ func WithCodexCLIModel(model string) CodexCLIOption {
 	}
 }
 
-// WithCodexCLIWorkDir sets the base work directory.
 func WithCodexCLIWorkDir(dir string) CodexCLIOption {
 	return func(p *CodexCLIProvider) {
 		if dir != "" {
@@ -59,7 +52,6 @@ func WithCodexCLIWorkDir(dir string) CodexCLIOption {
 	}
 }
 
-// NewCodexCLIProvider creates a provider that invokes the codex CLI.
 func NewCodexCLIProvider(cliPath string, opts ...CodexCLIOption) *CodexCLIProvider {
 	if cliPath == "" {
 		cliPath = "codex"
@@ -69,7 +61,6 @@ func NewCodexCLIProvider(cliPath string, opts ...CodexCLIOption) *CodexCLIProvid
 		cliPath:      cliPath,
 		defaultModel: "gpt-5.4",
 		baseWorkDir:  filepath.Join(config.ResolvedDataDirFromEnv(), "cli-workspaces", "codex"),
-		permMode:     "bypassPermissions",
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -80,7 +71,6 @@ func NewCodexCLIProvider(cliPath string, opts ...CodexCLIOption) *CodexCLIProvid
 func (p *CodexCLIProvider) Name() string        { return p.name }
 func (p *CodexCLIProvider) DefaultModel() string { return p.defaultModel }
 
-// Capabilities returns the Codex CLI capability declaration.
 func (p *CodexCLIProvider) Capabilities() ProviderCapabilities {
 	return ProviderCapabilities{
 		Streaming:        true,
@@ -95,10 +85,8 @@ func (p *CodexCLIProvider) Capabilities() ProviderCapabilities {
 	}
 }
 
-// Close is a no-op for CodexCLI (per-request subprocess, no persistent state).
 func (p *CodexCLIProvider) Close() error { return nil }
 
-// Chat runs the CLI synchronously and returns the response.
 func (p *CodexCLIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	_, userMsg, _ := extractFromMessages(req.Messages)
 	sessionKey := extractStringOpt(req.Options, OptSessionKey)
@@ -111,24 +99,23 @@ func (p *CodexCLIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResp
 	defer unlock()
 
 	workDir := p.ensureWorkDir(sessionKey)
-	args := p.buildArgs(model, workDir, false)
-	args = append(args, "--", userMsg)
+	args := []string{"exec", "--json", "-m", model, "--ephemeral", "--dangerously-bypass-approvals-and-sandbox", userMsg}
 
 	cmd := exec.CommandContext(ctx, p.cliPath, args...)
 	cmd.Dir = workDir
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
+	cmd.Stdin = nil
 
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("codex-cli: %w (stderr: %s)", err, stderr.String())
 	}
 
-	return parseCodexCLIResponse(output)
+	return parseCodexJSONL(output)
 }
 
-// ChatStream runs the CLI with streaming output.
 func (p *CodexCLIProvider) ChatStream(ctx context.Context, req ChatRequest, onChunk func(StreamChunk)) (*ChatResponse, error) {
 	_, userMsg, _ := extractFromMessages(req.Messages)
 	sessionKey := extractStringOpt(req.Options, OptSessionKey)
@@ -141,8 +128,7 @@ func (p *CodexCLIProvider) ChatStream(ctx context.Context, req ChatRequest, onCh
 	defer unlock()
 
 	workDir := p.ensureWorkDir(sessionKey)
-	args := p.buildArgs(model, workDir, true)
-	args = append(args, "--", userMsg)
+	args := []string{"exec", "--json", "-m", model, "--ephemeral", "--dangerously-bypass-approvals-and-sandbox", userMsg}
 
 	cmd := exec.CommandContext(ctx, p.cliPath, args...)
 	cmd.WaitDelay = 5 * time.Second
@@ -150,6 +136,7 @@ func (p *CodexCLIProvider) ChatStream(ctx context.Context, req ChatRequest, onCh
 
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
+	cmd.Stdin = nil // prevent reading from parent stdin
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -175,33 +162,20 @@ func (p *CodexCLIProvider) ChatStream(ctx context.Context, req ChatRequest, onCh
 			continue
 		}
 
-		var ev cliStreamEvent
+		var ev codexCLIJSONLEvent
 		if err := json.Unmarshal(line, &ev); err != nil {
 			continue
 		}
 
 		switch ev.Type {
-		case "assistant":
-			if ev.Message != nil {
-				text, thinking := extractStreamContent(ev.Message)
-				if text != "" {
-					contentBuf.WriteString(text)
-					onChunk(StreamChunk{Content: text})
-				}
-				if thinking != "" {
-					onChunk(StreamChunk{Thinking: thinking})
-				}
+		case "item.completed":
+			if ev.Item != nil && ev.Item.Type == "agent_message" && ev.Item.Text != "" {
+				contentBuf.WriteString(ev.Item.Text)
+				onChunk(StreamChunk{Content: ev.Item.Text})
 			}
-		case "result":
-			if ev.Result != "" {
-				finalResp.Content = ev.Result
-			} else {
-				finalResp.Content = contentBuf.String()
-			}
+		case "turn.completed":
+			finalResp.Content = contentBuf.String()
 			finalResp.FinishReason = "stop"
-			if ev.Subtype == "error" || ev.IsError {
-				finalResp.FinishReason = "error"
-			}
 			if ev.Usage != nil {
 				finalResp.Usage = &Usage{
 					PromptTokens:     ev.Usage.InputTokens,
@@ -233,28 +207,12 @@ func (p *CodexCLIProvider) ChatStream(ctx context.Context, req ChatRequest, onCh
 	return &finalResp, nil
 }
 
-func (p *CodexCLIProvider) buildArgs(model, workDir string, stream bool) []string {
-	args := []string{
-		"--model", model,
-		"--permission-mode", p.permMode,
-	}
-	if stream {
-		args = append(args, "--output-format", "stream-json")
-	} else {
-		args = append(args, "--output-format", "json")
-	}
-	return args
-}
-
 func (p *CodexCLIProvider) ensureWorkDir(sessionKey string) string {
 	safe := sanitizePathSegment(sessionKey)
 	dir := filepath.Join(p.baseWorkDir, safe)
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		slog.Warn("codex-cli: failed to create workdir", "dir", dir, "error", err)
-		return os.TempDir()
-	}
+	os.MkdirAll(dir, 0755)
 	return dir
 }
 
@@ -265,33 +223,57 @@ func (p *CodexCLIProvider) lockSession(sessionKey string) func() {
 	return m.Unlock
 }
 
-func parseCodexCLIResponse(data []byte) (*ChatResponse, error) {
-	trimmed := strings.TrimSpace(string(data))
-	if trimmed == "" {
-		return nil, fmt.Errorf("codex-cli: empty response")
+// codexCLIJSONLEvent represents a single JSONL line from `codex exec --json`.
+type codexCLIJSONLEvent struct {
+	Type  string       `json:"type"`
+	Item  *codexCLIItem   `json:"item,omitempty"`
+	Usage *codexCLIUsage  `json:"usage,omitempty"`
+}
+
+type codexCLIItem struct {
+	ID   string `json:"id"`
+	Type string `json:"type"` // "agent_message"
+	Text string `json:"text"`
+}
+
+type codexCLIUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+}
+
+func parseCodexJSONL(data []byte) (*ChatResponse, error) {
+	lines := bytes.Split(data, []byte("\n"))
+	var content strings.Builder
+	var usage *Usage
+
+	for _, line := range lines {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+		var ev codexCLIJSONLEvent
+		if err := json.Unmarshal(line, &ev); err != nil {
+			continue
+		}
+		if ev.Type == "item.completed" && ev.Item != nil && ev.Item.Text != "" {
+			content.WriteString(ev.Item.Text)
+		}
+		if ev.Usage != nil {
+			usage = &Usage{
+				PromptTokens:     ev.Usage.InputTokens,
+				CompletionTokens: ev.Usage.OutputTokens,
+				TotalTokens:      ev.Usage.InputTokens + ev.Usage.OutputTokens,
+			}
+		}
 	}
 
-	var resp cliJSONResponse
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return &ChatResponse{
-			Content:      trimmed,
-			FinishReason: "stop",
-		}, nil
-	}
-
-	if resp.Type == "result" {
-		cr := &ChatResponse{
-			Content:      resp.Result,
-			FinishReason: "stop",
-		}
-		if resp.Subtype == "error" {
-			cr.FinishReason = "error"
-		}
-		return cr, nil
+	if content.Len() == 0 {
+		return nil, fmt.Errorf("codex-cli: no content in response")
 	}
 
 	return &ChatResponse{
-		Content:      trimmed,
+		Content:      content.String(),
 		FinishReason: "stop",
+		Usage:        usage,
 	}, nil
 }

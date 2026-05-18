@@ -6,8 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,21 +16,18 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 )
 
-// CopilotProvider implements Provider by shelling out to the `copilot` CLI binary.
+// CopilotProvider shells out to `copilot -p` for non-interactive chat.
 type CopilotProvider struct {
 	name         string
 	cliPath      string
 	defaultModel string
 	baseWorkDir  string
-	permMode     string
 	mu           sync.Mutex
 	sessionMu    sync.Map
 }
 
-// CopilotOption configures the provider.
 type CopilotOption func(*CopilotProvider)
 
-// WithCopilotName overrides the provider name.
 func WithCopilotName(name string) CopilotOption {
 	return func(p *CopilotProvider) {
 		if name != "" {
@@ -41,7 +36,6 @@ func WithCopilotName(name string) CopilotOption {
 	}
 }
 
-// WithCopilotModel sets the default model.
 func WithCopilotModel(model string) CopilotOption {
 	return func(p *CopilotProvider) {
 		if model != "" {
@@ -50,7 +44,6 @@ func WithCopilotModel(model string) CopilotOption {
 	}
 }
 
-// NewCopilotProvider creates a provider for the GitHub Copilot CLI.
 func NewCopilotProvider(cliPath string, opts ...CopilotOption) *CopilotProvider {
 	if cliPath == "" {
 		cliPath = "copilot"
@@ -60,7 +53,6 @@ func NewCopilotProvider(cliPath string, opts ...CopilotOption) *CopilotProvider 
 		cliPath:      cliPath,
 		defaultModel: "gpt-5.4",
 		baseWorkDir:  filepath.Join(config.ResolvedDataDirFromEnv(), "cli-workspaces", "copilot"),
-		permMode:     "bypassPermissions",
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -86,7 +78,6 @@ func (p *CopilotProvider) Capabilities() ProviderCapabilities {
 
 func (p *CopilotProvider) Close() error { return nil }
 
-// Chat runs the CLI synchronously.
 func (p *CopilotProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	_, userMsg, _ := extractFromMessages(req.Messages)
 	sessionKey := extractStringOpt(req.Options, OptSessionKey)
@@ -99,24 +90,23 @@ func (p *CopilotProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespo
 	defer unlock()
 
 	workDir := p.ensureWorkDir(sessionKey)
-	args := p.buildArgs(model, false)
-	args = append(args, "--", userMsg)
+	args := []string{"-p", userMsg, "--output-format", "json", "--model", model, "--allow-all-tools"}
 
 	cmd := exec.CommandContext(ctx, p.cliPath, args...)
 	cmd.Dir = workDir
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
+	cmd.Stdin = nil
 
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("copilot: %w (stderr: %s)", err, stderr.String())
 	}
 
-	return parseCLIJSONResponse(output)
+	return parseCopilotJSONL(output)
 }
 
-// ChatStream runs the CLI with streaming output.
 func (p *CopilotProvider) ChatStream(ctx context.Context, req ChatRequest, onChunk func(StreamChunk)) (*ChatResponse, error) {
 	_, userMsg, _ := extractFromMessages(req.Messages)
 	sessionKey := extractStringOpt(req.Options, OptSessionKey)
@@ -129,8 +119,7 @@ func (p *CopilotProvider) ChatStream(ctx context.Context, req ChatRequest, onChu
 	defer unlock()
 
 	workDir := p.ensureWorkDir(sessionKey)
-	args := p.buildArgs(model, true)
-	args = append(args, "--", userMsg)
+	args := []string{"-p", userMsg, "--output-format", "json", "--model", model, "--allow-all-tools"}
 
 	cmd := exec.CommandContext(ctx, p.cliPath, args...)
 	cmd.WaitDelay = 5 * time.Second
@@ -138,6 +127,7 @@ func (p *CopilotProvider) ChatStream(ctx context.Context, req ChatRequest, onChu
 
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
+	cmd.Stdin = nil
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -148,40 +138,6 @@ func (p *CopilotProvider) ChatStream(ctx context.Context, req ChatRequest, onChu
 		return nil, fmt.Errorf("copilot start: %w", err)
 	}
 
-	return scanCLIStream(ctx, cmd, stdout, &stderrBuf, onChunk, "copilot")
-}
-
-func (p *CopilotProvider) buildArgs(model string, stream bool) []string {
-	args := []string{"--model", model}
-	if stream {
-		args = append(args, "--output-format", "stream-json")
-	} else {
-		args = append(args, "--output-format", "json")
-	}
-	return args
-}
-
-func (p *CopilotProvider) ensureWorkDir(sessionKey string) string {
-	safe := sanitizePathSegment(sessionKey)
-	dir := filepath.Join(p.baseWorkDir, safe)
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		slog.Warn("copilot: failed to create workdir", "dir", dir, "error", err)
-		return os.TempDir()
-	}
-	return dir
-}
-
-func (p *CopilotProvider) lockSession(sessionKey string) func() {
-	actual, _ := p.sessionMu.LoadOrStore(sessionKey, &sync.Mutex{})
-	m := actual.(*sync.Mutex)
-	m.Lock()
-	return m.Unlock
-}
-
-// scanCLIStream is a shared streaming line scanner for CLI providers.
-func scanCLIStream(ctx context.Context, cmd *exec.Cmd, stdout io.Reader, stderr *bytes.Buffer, onChunk func(StreamChunk), name string) (*ChatResponse, error) {
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, StdioScanBufInit), StdioScanBufMax)
 
@@ -197,39 +153,28 @@ func scanCLIStream(ctx context.Context, cmd *exec.Cmd, stdout io.Reader, stderr 
 			continue
 		}
 
-		var ev cliStreamEvent
+		var ev copilotJSONLEvent
 		if err := json.Unmarshal(line, &ev); err != nil {
 			continue
 		}
 
 		switch ev.Type {
-		case "assistant":
-			if ev.Message != nil {
-				text, thinking := extractStreamContent(ev.Message)
-				if text != "" {
-					contentBuf.WriteString(text)
-					onChunk(StreamChunk{Content: text})
-				}
-				if thinking != "" {
-					onChunk(StreamChunk{Thinking: thinking})
-				}
+		case "assistant.message_delta":
+			if ev.Data != nil && ev.Data.DeltaContent != "" {
+				contentBuf.WriteString(ev.Data.DeltaContent)
+				onChunk(StreamChunk{Content: ev.Data.DeltaContent})
+			}
+		case "assistant.message":
+			if ev.Data != nil && ev.Data.Content != "" {
+				finalResp.Content = ev.Data.Content
 			}
 		case "result":
-			if ev.Result != "" {
-				finalResp.Content = ev.Result
-			} else {
+			if finalResp.Content == "" {
 				finalResp.Content = contentBuf.String()
 			}
 			finalResp.FinishReason = "stop"
-			if ev.Subtype == "error" || ev.IsError {
+			if ev.ExitCode != nil && *ev.ExitCode != 0 {
 				finalResp.FinishReason = "error"
-			}
-			if ev.Usage != nil {
-				finalResp.Usage = &Usage{
-					PromptTokens:     ev.Usage.InputTokens,
-					CompletionTokens: ev.Usage.OutputTokens,
-					TotalTokens:      ev.Usage.InputTokens + ev.Usage.OutputTokens,
-				}
 			}
 		}
 	}
@@ -243,7 +188,7 @@ func scanCLIStream(ctx context.Context, cmd *exec.Cmd, stdout io.Reader, stderr 
 		if finalResp.Content != "" {
 			return &finalResp, nil
 		}
-		return nil, fmt.Errorf("%s: %w (stderr: %s)", name, err, stderr.String())
+		return nil, fmt.Errorf("copilot: %w (stderr: %s)", err, stderrBuf.String())
 	}
 
 	if finalResp.Content == "" {
@@ -255,25 +200,75 @@ func scanCLIStream(ctx context.Context, cmd *exec.Cmd, stdout io.Reader, stderr 
 	return &finalResp, nil
 }
 
-// parseCLIJSONResponse parses CLI JSON output into a ChatResponse.
-func parseCLIJSONResponse(data []byte) (*ChatResponse, error) {
-	trimmed := strings.TrimSpace(string(data))
-	if trimmed == "" {
-		return nil, fmt.Errorf("cli: empty response")
-	}
+func (p *CopilotProvider) ensureWorkDir(sessionKey string) string {
+	safe := sanitizePathSegment(sessionKey)
+	dir := filepath.Join(p.baseWorkDir, safe)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	os.MkdirAll(dir, 0755)
+	return dir
+}
 
-	var resp cliJSONResponse
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return &ChatResponse{Content: trimmed, FinishReason: "stop"}, nil
-	}
+func (p *CopilotProvider) lockSession(sessionKey string) func() {
+	actual, _ := p.sessionMu.LoadOrStore(sessionKey, &sync.Mutex{})
+	m := actual.(*sync.Mutex)
+	m.Lock()
+	return m.Unlock
+}
 
-	if resp.Type == "result" {
-		cr := &ChatResponse{Content: resp.Result, FinishReason: "stop"}
-		if resp.Subtype == "error" {
-			cr.FinishReason = "error"
+// copilotJSONLEvent represents a single JSONL line from `copilot --output-format json`.
+type copilotJSONLEvent struct {
+	Type     string         `json:"type"`
+	Data     *copilotData   `json:"data,omitempty"`
+	ExitCode *int           `json:"exitCode,omitempty"`
+}
+
+type copilotData struct {
+	Content      string `json:"content"`
+	DeltaContent string `json:"deltaContent"`
+}
+
+func parseCopilotJSONL(data []byte) (*ChatResponse, error) {
+	lines := bytes.Split(data, []byte("\n"))
+	var content string
+
+	for _, line := range lines {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
 		}
-		return cr, nil
+		var ev copilotJSONLEvent
+		if err := json.Unmarshal(line, &ev); err != nil {
+			continue
+		}
+		if ev.Type == "assistant.message" && ev.Data != nil {
+			content = ev.Data.Content
+		}
 	}
 
-	return &ChatResponse{Content: trimmed, FinishReason: "stop"}, nil
+	if content == "" {
+		// Fallback: try message_delta events
+		for _, line := range lines {
+			line = bytes.TrimSpace(line)
+			if len(line) == 0 {
+				continue
+			}
+			var ev copilotJSONLEvent
+			if err := json.Unmarshal(line, &ev); err != nil {
+				continue
+			}
+			if ev.Type == "assistant.message_delta" && ev.Data != nil {
+				content += ev.Data.DeltaContent
+			}
+		}
+	}
+
+	if content == "" {
+		return nil, fmt.Errorf("copilot: no content in response")
+	}
+
+	return &ChatResponse{
+		Content:      content,
+		FinishReason: "stop",
+	}, nil
 }
