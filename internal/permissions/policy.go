@@ -287,6 +287,7 @@ func isAdminMethod(method string) bool {
 func isWriteMethod(method string) bool {
 	writeExact := []string{
 		protocol.MethodChatSend,
+		protocol.MethodChatBackground,
 		protocol.MethodChatAbort,
 		protocol.MethodChatInject,
 		protocol.MethodSessionsDelete,
@@ -294,6 +295,7 @@ func isWriteMethod(method string) bool {
 		protocol.MethodSessionsPatch,
 		protocol.MethodSessionsCompact,
 		protocol.MethodSessionsFork,
+		protocol.MethodSessionsRemoteToken,
 		protocol.MethodSessionsRewind,
 		protocol.MethodSessionsGoalSet,
 		protocol.MethodFeedbackSend,
@@ -352,6 +354,7 @@ func isReadMethod(method string) bool {
 		protocol.MethodSessionsList,
 		protocol.MethodSessionsPreview,
 		protocol.MethodSessionsRecap,
+		protocol.MethodSessionsRemoteAttach,
 		protocol.MethodSessionsExport,
 		protocol.MethodSessionsGoalStatus,
 

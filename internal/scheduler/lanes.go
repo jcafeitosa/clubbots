@@ -20,10 +20,11 @@ import (
 
 // Lane name constants.
 const (
-	LaneMain     = "main"
-	LaneSubagent = "subagent"
-	LaneTeam     = "team"
-	LaneCron     = "cron"
+	LaneMain       = "main"
+	LaneSubagent   = "subagent"
+	LaneTeam       = "team"
+	LaneCron       = "cron"
+	LaneBackground = "background"
 )
 
 // LaneConfig configures a single lane.
@@ -160,6 +161,7 @@ func DefaultLanes() []LaneConfig {
 		{Name: LaneSubagent, Concurrency: laneEnv("GOCLAW_LANE_SUBAGENT", 50)},
 		{Name: LaneTeam, Concurrency: laneEnvFallback("GOCLAW_LANE_TEAM", "GOCLAW_LANE_DELEGATE", 100)},
 		{Name: LaneCron, Concurrency: laneEnv("GOCLAW_LANE_CRON", 30)},
+		{Name: LaneBackground, Concurrency: laneEnv("GOCLAW_LANE_BACKGROUND", 10)},
 	}
 }
 

@@ -106,6 +106,7 @@ type chatSendParams struct {
 	AgentID    string            `json:"agentId"`
 	SessionKey string            `json:"sessionKey"`
 	Stream     bool              `json:"stream"`
+	Background bool              `json:"background,omitempty"` // run in background, return immediately
 	Media      json.RawMessage   `json:"media,omitempty"` // []string (legacy) or []chatMediaItem
 }
 
@@ -188,6 +189,27 @@ func (m *ChatMethods) handleSend(ctx context.Context, client *gateway.Client, re
 			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrUnauthorized, i18n.T(locale, i18n.MsgPermissionDenied, "session")))
 			return
 		}
+	}
+
+	// Background mode: return immediately, run agent in background lane.
+	// Completion is broadcast via event bus (chat.background.done) instead of direct response.
+	if params.Background {
+		client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{
+			"runId":      runID,
+			"sessionKey": sessionKey,
+			"background": true,
+		}))
+		// Fall through to async goroutine below — the response is already sent.
+	}
+
+	// Background mode: return immediately, agent runs asynchronously.
+	// Completion broadcast via event bus (chat.background.done).
+	if params.Background {
+		client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{
+			"runId":      runID,
+			"sessionKey": sessionKey,
+			"background": true,
+		}))
 	}
 
 	// Detach from HTTP request context so agent runs survive page navigation/reconnect.
@@ -297,12 +319,26 @@ func (m *ChatMethods) handleSend(ctx context.Context, client *gateway.Client, re
 			// Send cancelled response so the frontend's chat.send promise resolves
 			// instead of hanging until the 600s timeout.
 			if runCtx.Err() != nil {
-				client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{
-					"cancelled": true,
-				}))
+				if params.Background {
+					m.eventBus.Broadcast(bus.Event{Name: "chat.background.done", Payload: map[string]any{
+						"runId": runID, "sessionKey": sessionKey, "cancelled": true,
+					}})
+				} else {
+					client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{
+						"cancelled": true,
+					}))
+				}
 				return
 			}
-			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, err.Error()))
+			if params.Background {
+						m.eventBus.Broadcast(bus.Event{Name: "chat.background.done", Payload: map[string]any{
+							"runId":      runID,
+							"sessionKey": sessionKey,
+							"error":      err.Error(),
+						}})
+					} else {
+						client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, err.Error()))
+					}
 			return
 		}
 
@@ -364,7 +400,16 @@ func (m *ChatMethods) handleSend(ctx context.Context, client *gateway.Client, re
 		if len(mediaResults) > 0 {
 			resp["media"] = mediaResults
 		}
-		client.SendResponse(protocol.NewOKResponse(req.ID, resp))
+		if params.Background {
+			m.eventBus.Broadcast(bus.Event{Name: "chat.background.done", Payload: map[string]any{
+				"runId":      runID,
+				"sessionKey": sessionKey,
+				"content":    content,
+				"usage":      result.Usage,
+			}})
+		} else {
+			client.SendResponse(protocol.NewOKResponse(req.ID, resp))
+		}
 	}()
 }
 

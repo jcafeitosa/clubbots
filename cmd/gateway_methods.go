@@ -66,6 +66,9 @@ func registerAllMethods(server *gateway.Server, agents *agent.Router, sessStore 
 	// Phase 2: Git helpers
 	methods.NewGitMethods().Register(router)
 
+	// Phase 2: Remote session access
+	methods.NewRemoteMethods().Register(router)
+
 	// Phase 2: Feedback
 	methods.NewFeedbackMethods().Register(router)
 

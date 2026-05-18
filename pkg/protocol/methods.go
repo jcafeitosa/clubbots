@@ -16,6 +16,7 @@ const (
 	MethodChatAbort         = "chat.abort"
 	MethodChatInject        = "chat.inject"
 	MethodChatSessionStatus = "chat.session.status"
+	MethodChatBackground     = "chat.background"
 
 	// Agents management
 	MethodAgentsList     = "agents.list"
@@ -54,6 +55,8 @@ const (
 	MethodGitCommitMessage = "git.commit_message"
 	MethodGitCodeReview    = "git.code_review"
 	MethodGitSecurityReview = "git.security_review"
+	MethodSessionsRemoteToken  = "sessions.remote.token.create"
+	MethodSessionsRemoteAttach = "sessions.remote.attach"
 
 	// System
 	MethodConnect = "connect"
