@@ -63,6 +63,9 @@ func registerAllMethods(server *gateway.Server, agents *agent.Router, sessStore 
 	// Phase 2: Usage (queries SessionStore for real token data)
 	methods.NewUsageMethods(sessStore).Register(router)
 
+	// Phase 2: Git helpers
+	methods.NewGitMethods().Register(router)
+
 	// Phase 2: Feedback
 	methods.NewFeedbackMethods().Register(router)
 

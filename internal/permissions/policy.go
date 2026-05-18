@@ -359,6 +359,10 @@ func isReadMethod(method string) bool {
 		protocol.MethodSkillsList,
 		protocol.MethodSkillsGet,
 
+		// Git helpers
+		protocol.MethodGitCommitMessage,
+		protocol.MethodGitCodeReview,
+
 		// Cron read
 		protocol.MethodCronList,
 		protocol.MethodCronStatus,

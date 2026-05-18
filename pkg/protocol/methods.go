@@ -50,6 +50,10 @@ const (
 	// Feedback
 	MethodFeedbackSend = "feedback.send"
 
+	// Git helpers
+	MethodGitCommitMessage = "git.commit_message"
+	MethodGitCodeReview    = "git.code_review"
+
 	// System
 	MethodConnect = "connect"
 	MethodHealth  = "health"
