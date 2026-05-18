@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -10,12 +11,14 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 )
 
-// OpenCodeProvider shells out to the `opencode` CLI binary.
-// OpenCode is primarily interactive; non-interactive use pipes the prompt via stdin.
+// OpenCodeProvider shells out to `opencode run` for non-interactive chat.
+// OpenCode also supports ACP natively (opencode acp); the gateway uses ACPProvider
+// for full protocol support. This provider is a lightweight alternative using `run`.
 type OpenCodeProvider struct {
 	name         string
 	cliPath      string
@@ -50,7 +53,7 @@ func NewOpenCodeProvider(cliPath string, opts ...OpenCodeOption) *OpenCodeProvid
 	p := &OpenCodeProvider{
 		name:         "opencode",
 		cliPath:      cliPath,
-		defaultModel: "gpt-5.4",
+		defaultModel: "github-copilot/claude-sonnet-4.5",
 		baseWorkDir:  filepath.Join(config.ResolvedDataDirFromEnv(), "cli-workspaces", "opencode"),
 	}
 	for _, opt := range opts {
@@ -88,30 +91,129 @@ func (p *OpenCodeProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResp
 	unlock := p.lockSession(sessionKey)
 	defer unlock()
 
-	workDir := p.ensureWorkDir(sessionKey)
-	args := []string{"--pure", "-m", model, "."}
+	workspace := extractStringOpt(req.Options, OptWorkspace)
+	workDir := p.ensureWorkDir(sessionKey, workspace)
+	args := []string{"run", userMsg, "--model", model, "--format", "json", "--dangerously-skip-permissions", "--dir", workDir}
 
 	cmd := exec.CommandContext(ctx, p.cliPath, args...)
 	cmd.Dir = workDir
-	cmd.Stdin = strings.NewReader(userMsg + "\n/exit\n")
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
+	cmd.Stdin = nil
 
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("opencode: %w (stderr: %s)", err, stderr.String())
 	}
 
-	return parseOpenCodeOutput(output)
+	return parseOpenCodeJSONL(output)
 }
 
 func (p *OpenCodeProvider) ChatStream(ctx context.Context, req ChatRequest, onChunk func(StreamChunk)) (*ChatResponse, error) {
-	// OpenCode's streaming model is TUI-based. For now, delegate to Chat().
-	return p.Chat(ctx, req)
+	_, userMsg, _ := extractFromMessages(req.Messages)
+	sessionKey := extractStringOpt(req.Options, OptSessionKey)
+	model := req.Model
+	if model == "" {
+		model = p.defaultModel
+	}
+
+	unlock := p.lockSession(sessionKey)
+	defer unlock()
+
+	workspace := extractStringOpt(req.Options, OptWorkspace)
+	workDir := p.ensureWorkDir(sessionKey, workspace)
+	args := []string{"run", userMsg, "--model", model, "--format", "json", "--dangerously-skip-permissions", "--dir", workDir}
+
+	cmd := exec.CommandContext(ctx, p.cliPath, args...)
+	cmd.WaitDelay = 5 * time.Second
+	cmd.Dir = workDir
+
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
+	cmd.Stdin = nil
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("opencode stdout pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("opencode start: %w", err)
+	}
+
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 0, StdioScanBufInit), StdioScanBufMax)
+
+	var finalResp ChatResponse
+	var contentBuf strings.Builder
+
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			break
+		}
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+
+		var ev openCodeJSONLEvent
+		if err := json.Unmarshal(line, &ev); err != nil {
+			continue
+		}
+
+		switch ev.Type {
+		case "text":
+			if ev.Part != nil && ev.Part.Text != "" {
+				contentBuf.WriteString(ev.Part.Text)
+				onChunk(StreamChunk{Content: ev.Part.Text})
+			}
+		case "step_finish":
+			finalResp.Content = contentBuf.String()
+			finalResp.FinishReason = "stop"
+			if ev.Part != nil && ev.Part.Tokens != nil {
+				finalResp.Usage = &Usage{
+					PromptTokens:     ev.Part.Tokens.Input,
+					CompletionTokens: ev.Part.Tokens.Output,
+					TotalTokens:      ev.Part.Tokens.Total,
+				}
+			}
+		case "error":
+			if finalResp.Content == "" && ev.Error != nil && ev.Error.Data != nil {
+				finalResp.Content = ev.Error.Data.Message
+				finalResp.FinishReason = "error"
+			}
+		}
+	}
+
+	if ctx.Err() != nil {
+		_ = cmd.Wait()
+		return nil, ctx.Err()
+	}
+
+	if err := cmd.Wait(); err != nil {
+		if finalResp.Content != "" {
+			return &finalResp, nil
+		}
+		return nil, fmt.Errorf("opencode: %w (stderr: %s)", err, stderrBuf.String())
+	}
+
+	if finalResp.Content == "" {
+		finalResp.Content = contentBuf.String()
+		finalResp.FinishReason = "stop"
+	}
+
+	onChunk(StreamChunk{Done: true})
+	return &finalResp, nil
 }
 
-func (p *OpenCodeProvider) ensureWorkDir(sessionKey string) string {
+func (p *OpenCodeProvider) ensureWorkDir(sessionKey, workspace string) string {
+	// If a workspace is provided and exists, use it directly (OpenCode needs real directory context).
+	if workspace != "" {
+		if fi, err := os.Stat(workspace); err == nil && fi.IsDir() {
+			return workspace
+		}
+	}
 	safe := sanitizePathSegment(sessionKey)
 	dir := filepath.Join(p.baseWorkDir, safe)
 	p.mu.Lock()
@@ -127,41 +229,83 @@ func (p *OpenCodeProvider) lockSession(sessionKey string) func() {
 	return m.Unlock
 }
 
-func parseOpenCodeOutput(data []byte) (*ChatResponse, error) {
-	// OpenCode can export session data as JSON. For now, try to parse as
-	// a plain text response, stripping ANSI codes.
-	text := stripANSI(string(data))
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return nil, fmt.Errorf("opencode: empty response")
-	}
-	return &ChatResponse{
-		Content:      text,
-		FinishReason: "stop",
-	}, nil
+// openCodeJSONLEvent represents a single JSONL line from `opencode run --format json`.
+type openCodeJSONLEvent struct {
+	Type      string           `json:"type"`
+	Part      *openCodePart    `json:"part,omitempty"`
+	Error     *openCodeErr     `json:"error,omitempty"`
+	SessionID string           `json:"sessionID"`
 }
 
-func stripANSI(s string) string {
-	var buf strings.Builder
-	inEsc := false
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c == '\x1b' {
-			inEsc = true
+type openCodePart struct {
+	Type   string         `json:"type"`
+	Text   string         `json:"text"`
+	Tokens *openCodeTokens `json:"tokens,omitempty"`
+}
+
+type openCodeTokens struct {
+	Total  int `json:"total"`
+	Input  int `json:"input"`
+	Output int `json:"output"`
+}
+
+type openCodeErr struct {
+	Data *openCodeErrData `json:"data,omitempty"`
+}
+
+type openCodeErrData struct {
+	Message string `json:"message"`
+}
+
+func parseOpenCodeJSONL(data []byte) (*ChatResponse, error) {
+	lines := bytes.Split(data, []byte("\n"))
+	var content strings.Builder
+	var usage *Usage
+	var errMsg string
+
+	for _, line := range lines {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
 			continue
 		}
-		if inEsc {
-			if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
-				inEsc = false
+		var ev openCodeJSONLEvent
+		if err := json.Unmarshal(line, &ev); err != nil {
+			continue
+		}
+		switch ev.Type {
+		case "text":
+			if ev.Part != nil && ev.Part.Text != "" {
+				content.WriteString(ev.Part.Text)
 			}
-			continue
+		case "step_finish":
+			if ev.Part != nil && ev.Part.Tokens != nil {
+				usage = &Usage{
+					PromptTokens:     ev.Part.Tokens.Input,
+					CompletionTokens: ev.Part.Tokens.Output,
+					TotalTokens:      ev.Part.Tokens.Total,
+				}
+			}
+		case "error":
+			if ev.Error != nil && ev.Error.Data != nil {
+				errMsg = ev.Error.Data.Message
+			}
 		}
-		buf.WriteByte(c)
 	}
-	return buf.String()
-}
 
-// Marshal/Unmarshal helpers used by opencode session export.
-func init() {
-	_ = json.Marshal // ensure json import is used
+	if content.Len() == 0 && errMsg != "" {
+		return &ChatResponse{
+			Content:      errMsg,
+			FinishReason: "error",
+		}, nil
+	}
+
+	if content.Len() == 0 {
+		return nil, fmt.Errorf("opencode: no content in response")
+	}
+
+	return &ChatResponse{
+		Content:      content.String(),
+		FinishReason: "stop",
+		Usage:        usage,
+	}, nil
 }

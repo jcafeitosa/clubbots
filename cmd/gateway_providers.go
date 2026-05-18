@@ -621,9 +621,29 @@ func registerCLIProvider(registry *providers.Registry, spec cliinstall.CLISpec, 
 		registry.Register(providers.NewCodexCLIProvider(binaryPath,
 			providers.WithCodexCLIModel(spec.DefaultModel)))
 	case "copilot":
-		registry.Register(providers.NewCopilotProvider(binaryPath))
+		// GitHub Copilot CLI supports ACP natively via --acp flag.
+		workDir := filepath.Join(config.ResolvedDataDirFromEnv(), "cli-workspaces", "copilot")
+		registry.Register(providers.NewACPProvider(
+			binaryPath,
+			[]string{"--acp"},
+			workDir,
+			5*time.Minute,
+			tools.DefaultDenyPatterns(),
+			providers.WithACPName("copilot"),
+			providers.WithACPModel(spec.DefaultModel),
+		))
 	case "opencode":
-		registry.Register(providers.NewOpenCodeProvider(binaryPath))
+		// OpenCode supports ACP natively via `opencode acp` command.
+		workDir := filepath.Join(config.ResolvedDataDirFromEnv(), "cli-workspaces", "opencode")
+		registry.Register(providers.NewACPProvider(
+			binaryPath,
+			[]string{"acp"},
+			workDir,
+			5*time.Minute,
+			tools.DefaultDenyPatterns(),
+			providers.WithACPName("opencode"),
+			providers.WithACPModel(spec.DefaultModel),
+		))
 	}
 	slog.Info("registered CLI provider", "type", spec.ProviderType, "binary", binaryPath)
 }
