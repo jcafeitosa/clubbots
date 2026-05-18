@@ -2,6 +2,7 @@ package providers
 
 import (
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -38,6 +39,11 @@ func NewDefaultTransport() *http.Transport {
 
 // NewDefaultHTTPClient returns an *http.Client backed by NewDefaultTransport.
 // No Client.Timeout is set — rely on ctx deadlines and Transport stage timeouts.
+// When GOCLAW_DEBUG_HTTP=1, wraps transport with debug logging (redacted headers).
 func NewDefaultHTTPClient() *http.Client {
-	return &http.Client{Transport: NewDefaultTransport()}
+	var transport http.RoundTripper = NewDefaultTransport()
+	if os.Getenv("GOCLAW_DEBUG_HTTP") == "1" {
+		transport = NewDebugMiddleware().Wrap(transport)
+	}
+	return &http.Client{Transport: transport}
 }
