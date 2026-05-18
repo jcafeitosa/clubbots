@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/nextlevelbuilder/goclaw/internal/cliinstall"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/oauth"
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
@@ -28,7 +31,7 @@ func loopbackAddr(host string, port int) string {
 	return net.JoinHostPort(host, strconv.Itoa(port))
 }
 
-func registerProviders(registry *providers.Registry, cfg *config.Config, modelReg providers.ModelRegistry) {
+func registerProviders(registry *providers.Registry, cfg *config.Config, modelReg providers.ModelRegistry, installer *cliinstall.Installer) {
 	if cfg.Providers.Anthropic.APIKey != "" {
 		registry.Register(providers.NewAnthropicProvider(cfg.Providers.Anthropic.APIKey,
 			providers.WithAnthropicBaseURL(cfg.Providers.Anthropic.APIBase),
@@ -202,6 +205,9 @@ func registerProviders(registry *providers.Registry, cfg *config.Config, modelRe
 	if cfg.Providers.ACP.Binary != "" {
 		registerACPFromConfig(registry, cfg.Providers.ACP)
 	}
+
+	// Detect and register CLI-based providers (auto-install if configured but missing).
+	registerCLIProviders(registry, cfg, installer)
 }
 
 // buildMCPServerLookup creates an MCPServerLookup from an MCPServerStore.
@@ -270,7 +276,7 @@ func jsonToStringMap(data json.RawMessage) map[string]string {
 // gatewayAddr is used to inject GoClaw MCP bridge for Claude CLI providers.
 // mcpStore is optional; when provided, per-agent MCP servers are injected into CLI config.
 // cfg provides fallback api_base values from config/env when DB providers have none set.
-func registerProvidersFromDB(registry *providers.Registry, provStore store.ProviderStore, secretStore store.ConfigSecretsStore, gatewayAddr, gatewayToken string, mcpStore store.MCPServerStore, cfg *config.Config, modelReg providers.ModelRegistry) {
+func registerProvidersFromDB(registry *providers.Registry, provStore store.ProviderStore, secretStore store.ConfigSecretsStore, gatewayAddr, gatewayToken string, mcpStore store.MCPServerStore, cfg *config.Config, modelReg providers.ModelRegistry, installer *cliinstall.Installer) {
 	dbProviders, err := provStore.ListAllProviders(context.Background())
 	if err != nil {
 		slog.Warn("failed to load providers from DB", "error", err)
@@ -291,10 +297,22 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 				slog.Warn("security.claude_cli: invalid path from DB, using default", "path", cliPath)
 				cliPath = "claude"
 			}
-			if _, err := exec.LookPath(cliPath); err != nil {
+		// Auto-install if binary not found (only with installer available).
+		if _, err := exec.LookPath(cliPath); err != nil {
+			if installer != nil {
+				spec := cliinstall.CLISpec{ProviderType: "claude_cli", Binary: "claude", Owner: "anthropics", Repo: "claude-code", DefaultModel: "sonnet"}
+				result, ierr := installer.Install(context.Background(), spec)
+				if ierr != nil {
+					slog.Warn("claude-cli: binary not found and install failed, skipping", "path", cliPath, "error", ierr)
+					continue
+				}
+				cliPath = result.Path
+				slog.Info("claude-cli: auto-installed from DB config", "path", cliPath, "version", result.Version)
+			} else {
 				slog.Warn("claude-cli: binary not found, skipping", "path", cliPath, "error", err)
 				continue
 			}
+		}
 			var cliOpts []providers.ClaudeCLIOption
 			cliOpts = append(cliOpts, providers.WithClaudeCLIName(p.Name))
 			cliOpts = append(cliOpts, providers.WithClaudeCLISecurityHooks("", true))
@@ -312,6 +330,12 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 			registerACPFromDB(registry, p)
 			continue
 		}
+		// New CLI-based providers (codex_cli, copilot, opencode) — no API key needed.
+		if p.ProviderType == store.ProviderCodexCLI || p.ProviderType == store.ProviderCopilot || p.ProviderType == store.ProviderOpenCode {
+			registerCLIFromDB(registry, installer, p)
+			continue
+		}
+
 		// Local Ollama requires no API key — handle before the key guard (same pattern as ClaudeCLI).
 		// api_base is stored with /v1 (normalized at write time), so no suffix appending needed.
 		if p.ProviderType == store.ProviderOllama {
@@ -487,4 +511,175 @@ func registerACPFromDB(registry *providers.Registry, p store.LLMProviderData) {
 // defaultACPWorkDir returns the default workspace directory for ACP agents.
 func defaultACPWorkDir() string {
 	return filepath.Join(config.ResolvedDataDirFromEnv(), "acp-workspaces")
+}
+
+// newCLIInstaller creates a cliinstall.Installer from config and env vars.
+// Creates its own GitHubClient, independent of the shared skills installer.
+func newCLIInstaller(cfg *config.Config) *cliinstall.Installer {
+	token := os.Getenv("GOCLAW_PACKAGES_GITHUB_TOKEN")
+	binDir := resolveCLIBinDir(cfg)
+	var allowedOrgs []string
+	if v := os.Getenv("GOCLAW_PACKAGES_GITHUB_ALLOWED_ORGS"); v != "" {
+		for o := range strings.SplitSeq(v, ",") {
+			if o = strings.TrimSpace(o); o != "" {
+				allowedOrgs = append(allowedOrgs, o)
+			}
+		}
+	}
+	return cliinstall.NewInstaller(token, binDir, allowedOrgs)
+}
+
+// resolveCLIBinDir determines the binary install directory.
+// Priority: GOCLAW_CLI_BIN_DIR > OS-specific default.
+func resolveCLIBinDir(cfg *config.Config) string {
+	if v := os.Getenv("GOCLAW_CLI_BIN_DIR"); v != "" {
+		return v
+	}
+	return filepath.Join(config.ResolvedDataDirFromEnv(), ".runtime", "bin")
+}
+
+// registerCLIProviders detects and registers CLI-based LLM providers.
+// - If configured explicitly (in config), tries LookPath → auto-install → register.
+// - If detected but not configured, logs info only (no auto-registration).
+// - If neither detected nor configured, silent.
+func registerCLIProviders(registry *providers.Registry, cfg *config.Config, installer *cliinstall.Installer) {
+	for _, spec := range cliinstall.KnownCLIs {
+		configured := isCLIConfigured(cfg, spec)
+		foundPath, found := cliinstall.Detect(spec.Binary)
+
+		switch {
+		case configured:
+			if !found {
+				slog.Info("cliinstall: configured CLI not found, attempting install",
+					"binary", spec.Binary, "provider_type", spec.ProviderType)
+				result, err := installer.Install(context.Background(), spec)
+				if err != nil {
+					slog.Error("cliinstall: failed to install configured CLI",
+						"binary", spec.Binary, "error", err)
+					continue
+				}
+				foundPath = result.Path
+				slog.Info("cliinstall: installed and registered",
+					"binary", spec.Binary, "version", result.Version)
+			}
+			registerCLIProvider(registry, spec, foundPath)
+		case found:
+			cliPath := cliPathFromConfig(cfg, spec)
+			if cliPath == "" {
+				cliPath = foundPath
+			}
+			slog.Info("cli available but not configured",
+				"binary", spec.Binary,
+				"path", cliPath,
+				"provider_type", spec.ProviderType,
+				"hint", "add a provider in config or DB to enable")
+		}
+		// case !configured && !found: silent
+	}
+}
+
+// isCLIConfigured checks if a CLI is explicitly configured in config file.
+func isCLIConfigured(cfg *config.Config, spec cliinstall.CLISpec) bool {
+	switch spec.ProviderType {
+	case "claude_cli":
+		return cfg.Providers.ClaudeCLI.CLIPath != ""
+	case "codex_cli":
+		return cfg.Providers.CodexCLI.CLIPath != ""
+	case "copilot":
+		return cfg.Providers.Copilot.CLIPath != ""
+	case "opencode":
+		return cfg.Providers.OpenCode.CLIPath != ""
+	}
+	return false
+}
+
+// cliPathFromConfig returns the configured cli_path for a CLI spec.
+func cliPathFromConfig(cfg *config.Config, spec cliinstall.CLISpec) string {
+	switch spec.ProviderType {
+	case "claude_cli":
+		return cfg.Providers.ClaudeCLI.CLIPath
+	case "codex_cli":
+		return cfg.Providers.CodexCLI.CLIPath
+	case "copilot":
+		return cfg.Providers.Copilot.CLIPath
+	case "opencode":
+		return cfg.Providers.OpenCode.CLIPath
+	}
+	return ""
+}
+
+// registerCLIProvider creates the appropriate provider for a CLI spec and registers it.
+func registerCLIProvider(registry *providers.Registry, spec cliinstall.CLISpec, binaryPath string) {
+	switch spec.ProviderType {
+	case "claude_cli":
+		// Claude CLI uses ClaudeCLIProvider with its specific options.
+		var opts []providers.ClaudeCLIOption
+		opts = append(opts, providers.WithClaudeCLIModel(spec.DefaultModel))
+		opts = append(opts, providers.WithClaudeCLISecurityHooks("", true))
+		registry.Register(providers.NewClaudeCLIProvider(binaryPath, opts...))
+	case "codex_cli":
+		registry.Register(providers.NewCodexCLIProvider(binaryPath,
+			providers.WithCodexCLIModel(spec.DefaultModel)))
+	case "copilot":
+		registry.Register(providers.NewCopilotProvider(binaryPath))
+	case "opencode":
+		registry.Register(providers.NewOpenCodeProvider(binaryPath))
+	}
+	slog.Info("registered CLI provider", "type", spec.ProviderType, "binary", binaryPath)
+}
+
+// registerCLIFromDB resolves and registers a CLI-based provider from a DB row.
+// Uses auto-install if the binary is not found and an installer is available.
+func registerCLIFromDB(registry *providers.Registry, installer *cliinstall.Installer, p store.LLMProviderData) {
+	cliPath := p.APIBase
+	if cliPath == "" {
+		cliPath = p.Name // fallback to provider name as binary name
+	}
+	// Validate: only accept simple names or absolute paths.
+	if cliPath != filepath.Base(cliPath) && !filepath.IsAbs(cliPath) {
+		slog.Warn("security.cli: invalid path from DB, using name as default", "path", cliPath, "name", p.Name)
+		cliPath = p.ProviderType // e.g. "codex_cli" -> binary is "codex"
+	}
+
+	// Resolve binary name from provider type for detection/install fallback.
+	binaryName := resolveCLIBinaryName(p.ProviderType)
+	spec := cliinstall.CLISpec{ProviderType: p.ProviderType, Binary: binaryName}
+
+	// Try LookPath, then auto-install if available.
+	if foundPath, found := cliinstall.Detect(binaryName); found {
+		cliPath = foundPath
+	} else if _, err := exec.LookPath(cliPath); err != nil {
+		if installer != nil {
+			result, ierr := installer.Install(context.Background(), spec)
+			if ierr != nil {
+				slog.Warn("cli: binary not found and install failed, skipping",
+					"provider_type", p.ProviderType, "name", p.Name, "error", ierr)
+				return
+			}
+			cliPath = result.Path
+			slog.Info("cli: auto-installed from DB config",
+				"provider_type", p.ProviderType, "path", cliPath, "version", result.Version)
+		} else {
+			slog.Warn("cli: binary not found, skipping",
+				"provider_type", p.ProviderType, "path", cliPath, "error", err)
+			return
+		}
+	}
+
+	registerCLIProvider(registry, spec, cliPath)
+}
+
+// resolveCLIBinaryName maps provider type to binary name.
+func resolveCLIBinaryName(providerType string) string {
+	switch providerType {
+	case "claude_cli":
+		return "claude"
+	case "codex_cli":
+		return "codex"
+	case "copilot":
+		return "copilot"
+	case "opencode":
+		return "opencode"
+	}
+	return providerType
 }

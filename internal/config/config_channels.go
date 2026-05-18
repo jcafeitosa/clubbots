@@ -215,6 +215,9 @@ type ProvidersConfig struct {
 	OllamaCloud ProviderConfig  `json:"ollama_cloud"` // Ollama Cloud (API key required)
 	ClaudeCLI   ClaudeCLIConfig `json:"claude_cli"`
 	ACP         ACPConfig       `json:"acp"`
+	CodexCLI    CLIConfig       `json:"codex_cli"`
+	Copilot     CLIConfig       `json:"copilot"`
+	OpenCode    CLIConfig       `json:"opencode"`
 	Novita         ProviderConfig  `json:"novita"`          // Novita AI (OpenAI-compatible endpoint)
 	BytePlus       ProviderConfig  `json:"byteplus"`        // BytePlus ModelArk (Seed 2.0)
 	BytePlusCoding ProviderConfig  `json:"byteplus_coding"` // BytePlus ModelArk Coding Plan
@@ -232,6 +235,14 @@ type ClaudeCLIConfig struct {
 	Model       string `json:"model" yaml:"model"`                 // default model alias (default: "sonnet")
 	BaseWorkDir string `json:"base_work_dir" yaml:"base_work_dir"` // base dir for agent workspaces
 	PermMode    string `json:"perm_mode" yaml:"perm_mode"`         // permission mode (default: "bypassPermissions")
+}
+
+// CLIConfig configures a generic CLI-based provider (Codex CLI, Copilot, OpenCode).
+type CLIConfig struct {
+	CLIPath     string `json:"cli_path" yaml:"cli_path"`           // path to binary (default: binary name)
+	Model       string `json:"model" yaml:"model"`                 // default model alias
+	BaseWorkDir string `json:"base_work_dir" yaml:"base_work_dir"` // base dir for workspaces
+	PermMode    string `json:"perm_mode" yaml:"perm_mode"`         // permission mode
 }
 
 // ACPConfig configures the ACP (Agent Client Protocol) provider.

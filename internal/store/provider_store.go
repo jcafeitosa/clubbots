@@ -33,6 +33,9 @@ const (
 	ProviderNovita          = "novita"          // Novita AI (OpenAI-compatible endpoint)
 	ProviderBytePlus        = "byteplus"        // BytePlus ModelArk (Seed 2.0 models)
 	ProviderBytePlusCoding  = "byteplus_coding" // BytePlus ModelArk Coding Plan
+	ProviderCodexCLI        = "codex_cli"        // OpenAI Codex CLI (subprocess)
+	ProviderCopilot         = "copilot"           // GitHub Copilot CLI (subprocess)
+	ProviderOpenCode        = "opencode"          // OpenCode CLI (subprocess)
 
 	// Novita AI defaults.
 	NovitaDefaultAPIBase = "https://api.novita.ai/openai"
@@ -70,6 +73,9 @@ var ValidProviderTypes = map[string]bool{
 	ProviderNovita:          true,
 	ProviderBytePlus:        true,
 	ProviderBytePlusCoding:  true,
+	ProviderCodexCLI:        true,
+	ProviderCopilot:         true,
+	ProviderOpenCode:        true,
 }
 
 // LLMProviderData represents an LLM provider configuration.

@@ -128,6 +128,7 @@ var (
 	excludeSuffixRE = regexp.MustCompile(`(?i)\.(sha256|sig|asc|minisig|pem|pub|cert|crt)$`)
 	excludeNameRE   = regexp.MustCompile(`(?i)(source[\s_-]?code|source\.tar\.gz|source\.zip)`)
 	linuxRE         = regexp.MustCompile(`(?i)linux`)
+	darwinRE        = regexp.MustCompile(`(?i)(darwin|macos|mac)`)
 	amd64RE         = regexp.MustCompile(`(?i)(amd64|x86[-_]?64|x64)`)
 	arm64RE         = regexp.MustCompile(`(?i)(arm64|aarch64)`)
 )
@@ -152,8 +153,11 @@ func SelectAsset(assets []GitHubAsset, goos, goarch string) (*GitHubAsset, error
 		candidates = append(candidates, a)
 	}
 
-	if goos == "linux" {
+	switch goos {
+	case "linux":
 		candidates = filterAssets(candidates, linuxRE)
+	case "darwin":
+		candidates = filterAssets(candidates, darwinRE)
 	}
 	switch goarch {
 	case "amd64":
@@ -312,8 +316,8 @@ func (i *GitHubInstaller) List() ([]GitHubPackageEntry, error) {
 
 // -------- ELF validation --------
 
-// validateELF checks magic bytes, 64-bit class, and machine matches runtime.
-func validateELF(content []byte) error {
+// ValidateELF checks magic bytes, 64-bit class, and machine matches runtime.
+func ValidateELF(content []byte) error {
 	if len(content) < 4 {
 		return ErrNotELF
 	}
@@ -343,13 +347,13 @@ func validateELF(content []byte) error {
 
 var nonBinaryPathRE = regexp.MustCompile(`(?i)(^|/)(man|docs?|contrib|completions|examples?|tests?|licenses?)/`)
 
-// pickBinaries selects executable entries from an extracted archive.
+// PickBinaries selects executable entries from an extracted archive.
 // Preference order:
 //  1. entries with basename == repo name (common case: `lazygit` binary in lazygit archive)
 //  2. all executable entries whose path doesn't match nonBinaryPathRE
 //     (man/docs/contrib/completions/examples/tests/licenses are excluded)
 //  3. any ELF-magic entry under a non-excluded path
-func pickBinaries(files []ArchiveFile, repoName string) []ArchiveFile {
+func PickBinaries(files []ArchiveFile, repoName string) []ArchiveFile {
 	// Filter out clearly-not-binary paths first.
 	var candidates []ArchiveFile
 	for _, f := range files {
@@ -478,12 +482,12 @@ func (i *GitHubInstaller) Install(ctx context.Context, spec string) (*GitHubPack
 		return nil, err
 	}
 
-	binaries := pickBinaries(files, parsed.Repo)
+	binaries := PickBinaries(files, parsed.Repo)
 	if len(binaries) == 0 {
 		return nil, fmt.Errorf("%w: %s", ErrNoBinaryInArchive, asset.Name)
 	}
 	for idx := range binaries {
-		if err := validateELF(binaries[idx].Content); err != nil {
+		if err := ValidateELF(binaries[idx].Content); err != nil {
 			return nil, err
 		}
 	}

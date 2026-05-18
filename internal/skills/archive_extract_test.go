@@ -196,7 +196,7 @@ func TestValidateELF_NonELFRejected(t *testing.T) {
 		"empty":      {},
 	}
 	for name, v := range vectors {
-		if err := validateELF(v); err == nil {
+		if err := ValidateELF(v); err == nil {
 			t.Errorf("vector %s should be rejected as non-ELF", name)
 		}
 	}
@@ -253,7 +253,7 @@ var _ = io.EOF
 
 func TestExtractArchiveAs_RawELFUsesFallbackName(t *testing.T) {
 	// Write a tiny "ELF" (magic bytes only — format parsing is done by
-	// validateELF in callers, extractRaw just copies bytes).
+	// ValidateELF in callers, extractRaw just copies bytes).
 	tmp, err := os.CreateTemp("", "goclaw-gh-asset-*.bin")
 	if err != nil {
 		t.Fatal(err)

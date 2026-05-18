@@ -112,6 +112,17 @@ func runGateway() {
 		}
 	}()
 
+	// Create CLI installer before provider registration so auto-install
+	// is available when providers register from config.
+	cliInstaller := newCLIInstaller(cfg)
+
+	// Recover from partial CLI updates (crash during atomic swap).
+	if err := cliInstaller.RecoverPartialUpdates(); err != nil {
+		slog.Warn("cliinstall: partial update recovery failed", "error", err)
+	}
+	// Startup update check runs async — non-fatal, logs results.
+	go cliInstaller.CheckAllForUpdates(context.Background())
+
 	// Create model registry with forward-compat resolvers (shared across all providers)
 	modelReg := providers.NewInMemoryRegistry()
 	modelReg.RegisterResolver("anthropic", &providers.AnthropicForwardCompat{})
@@ -119,7 +130,7 @@ func runGateway() {
 
 	// Create provider registry
 	providerRegistry := providers.NewRegistry(store.TenantIDFromContext)
-	registerProviders(providerRegistry, cfg, modelReg)
+	registerProviders(providerRegistry, cfg, modelReg, cliInstaller)
 
 	// Resolve workspace (must be absolute for system prompt + file tool path resolution)
 	workspace := config.ExpandHome(cfg.Agents.Defaults.Workspace)
@@ -170,7 +181,7 @@ func runGateway() {
 	// Register providers from DB (overrides config providers).
 	if pgStores.Providers != nil {
 		dbGatewayAddr := loopbackAddr(cfg.Gateway.Host, cfg.Gateway.Port)
-		registerProvidersFromDB(providerRegistry, pgStores.Providers, pgStores.ConfigSecrets, dbGatewayAddr, cfg.Gateway.Token, pgStores.MCP, cfg, modelReg)
+		registerProvidersFromDB(providerRegistry, pgStores.Providers, pgStores.ConfigSecrets, dbGatewayAddr, cfg.Gateway.Token, pgStores.MCP, cfg, modelReg, cliInstaller)
 	}
 	slog.Info("model registry initialized", "anthropic_models", len(modelReg.Catalog("anthropic")), "openai_models", len(modelReg.Catalog("openai")))
 

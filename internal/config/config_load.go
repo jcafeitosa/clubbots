@@ -151,7 +151,19 @@ func (c *Config) applyEnvOverrides() {
 	envStr("GOCLAW_CLAUDE_CLI_MODEL", &c.Providers.ClaudeCLI.Model)
 	envStr("GOCLAW_CLAUDE_CLI_WORK_DIR", &c.Providers.ClaudeCLI.BaseWorkDir)
 
-	// Default provider/model: env is fallback only (applied when config has no value).
+	// Codex CLI provider
+		envStr("GOCLAW_CODEX_CLI_PATH", &c.Providers.CodexCLI.CLIPath)
+		envStr("GOCLAW_CODEX_CLI_MODEL", &c.Providers.CodexCLI.Model)
+
+		// GitHub Copilot CLI provider
+		envStr("GOCLAW_COPILOT_PATH", &c.Providers.Copilot.CLIPath)
+		envStr("GOCLAW_COPILOT_MODEL", &c.Providers.Copilot.Model)
+
+		// OpenCode CLI provider
+		envStr("GOCLAW_OPENCODE_PATH", &c.Providers.OpenCode.CLIPath)
+		envStr("GOCLAW_OPENCODE_MODEL", &c.Providers.OpenCode.Model)
+
+		// Default provider/model: env is fallback only (applied when config has no value).
 	// The onboard wizard sets these in .env for initial bootstrap; once the user
 	// saves a provider/model via the Dashboard, the config-file value wins.
 	envFallback := func(key string, dst *string) {
