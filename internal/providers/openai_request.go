@@ -25,6 +25,10 @@ func (p *OpenAIProvider) buildRequestBody(model string, req ChatRequest, stream 
 		inputMessages = collapseToolCallsWithoutSig(inputMessages)
 	}
 
+	// Ensure tool messages have matching tool_calls in preceding assistant.
+	// DeepSeek and other strict validators reject orphaned tool messages.
+	inputMessages = fixOrphanedToolMessages(inputMessages)
+
 	// Build raw-ID → tool-name index for role="tool" serialization.
 	// Google Gemini's OpenAI-compat shim maps role=tool messages to native
 	// FunctionResponse{name, response}; an empty name trips HTTP 400 ("Name
@@ -346,4 +350,42 @@ func openAIWireAssistantReasoningContent(model string) bool {
 		return true
 	}
 	return false
+}
+
+// fixOrphanedToolMessages converts orphaned tool messages to user messages.
+// DeepSeek and other strict validators reject tool messages without matching
+// tool_calls in the preceding assistant message.
+func fixOrphanedToolMessages(msgs []Message) []Message {
+	// Build set of tool_call IDs from all assistant messages.
+	toolCallIDs := make(map[string]bool)
+	for _, m := range msgs {
+		if m.Role == "assistant" {
+			for _, tc := range m.ToolCalls {
+				toolCallIDs[tc.ID] = true
+			}
+		}
+	}
+
+	// If no tool calls at all, nothing to fix.
+	if len(toolCallIDs) == 0 {
+		return msgs
+	}
+
+	result := make([]Message, 0, len(msgs))
+	for _, m := range msgs {
+		if m.Role == "tool" && !toolCallIDs[m.ToolCallID] {
+			// Orphaned tool message — convert to user message with the tool output.
+			content := m.Content
+			if m.ToolCallID != "" {
+				content = "[" + m.ToolCallID + " result]\n" + content
+			}
+			result = append(result, Message{
+				Role:    "user",
+				Content: content,
+			})
+		} else {
+			result = append(result, m)
+		}
+	}
+	return result
 }
