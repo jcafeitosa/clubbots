@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"regexp"
 
 	"github.com/nextlevelbuilder/goclaw/internal/bgalert"
@@ -54,10 +55,15 @@ func (h *SystemConfigsHandler) handleList(w http.ResponseWriter, r *http.Request
 }
 
 func (h *SystemConfigsHandler) handleGet(w http.ResponseWriter, r *http.Request) {
-	locale := extractLocale(r)
 	key := r.PathValue("key")
 	val, err := h.store.Get(r.Context(), key)
 	if err != nil {
+		// Alert keys return empty instead of 404 — frontend polls these.
+		if strings.HasPrefix(key, "alert.") {
+			writeJSON(w, http.StatusOK, map[string]string{"key": key, "value": ""})
+			return
+		}
+		locale := extractLocale(r)
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": i18n.T(locale, i18n.MsgNotFound, "config", key)})
 		return
 	}
