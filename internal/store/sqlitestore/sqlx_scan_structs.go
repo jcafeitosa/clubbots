@@ -20,7 +20,7 @@ type providerRow struct {
 	APIBase      string          `json:"api_base" db:"api_base"`
 	APIKey       string          `json:"api_key" db:"api_key"`
 	Enabled      bool            `json:"enabled" db:"enabled"`
-	Settings     json.RawMessage `json:"settings" db:"settings"`
+	Settings     string          `json:"settings" db:"settings"`
 	CreatedAt    sqliteTime      `json:"created_at" db:"created_at"`
 	UpdatedAt    sqliteTime      `json:"updated_at" db:"updated_at"`
 	TenantID     uuid.UUID       `json:"tenant_id" db:"tenant_id"`
@@ -36,19 +36,19 @@ func (r *providerRow) toLLMProviderData() store.LLMProviderData {
 		APIBase:      r.APIBase,
 		APIKey:       r.APIKey,
 		Enabled:      r.Enabled,
-		Settings:     r.Settings,
+		Settings:     json.RawMessage(r.Settings),
 	}
 }
 
 // tenantRow is a scan struct for tenants rows.
 type tenantRow struct {
-	ID        uuid.UUID       `json:"id" db:"id"`
-	Name      string          `json:"name" db:"name"`
-	Slug      string          `json:"slug" db:"slug"`
-	Status    string          `json:"status" db:"status"`
-	Settings  json.RawMessage `json:"settings" db:"settings"`
-	CreatedAt sqliteTime      `json:"created_at" db:"created_at"`
-	UpdatedAt sqliteTime      `json:"updated_at" db:"updated_at"`
+	ID        uuid.UUID  `json:"id" db:"id"`
+	Name      string     `json:"name" db:"name"`
+	Slug      string     `json:"slug" db:"slug"`
+	Status    string     `json:"status" db:"status"`
+	Settings  string     `json:"settings" db:"settings"`
+	CreatedAt sqliteTime `json:"created_at" db:"created_at"`
+	UpdatedAt sqliteTime `json:"updated_at" db:"updated_at"`
 }
 
 func (r *tenantRow) toTenantData() store.TenantData {
@@ -57,7 +57,7 @@ func (r *tenantRow) toTenantData() store.TenantData {
 		Name:      r.Name,
 		Slug:      r.Slug,
 		Status:    r.Status,
-		Settings:  r.Settings,
+		Settings:  json.RawMessage(r.Settings),
 		CreatedAt: r.CreatedAt.Time,
 		UpdatedAt: r.UpdatedAt.Time,
 	}
@@ -103,7 +103,7 @@ type mcpServerRow struct {
 	APIKey      *string         `json:"api_key" db:"api_key"`
 	ToolPrefix  *string         `json:"tool_prefix" db:"tool_prefix"`
 	TimeoutSec  int             `json:"timeout_sec" db:"timeout_sec"`
-	Settings    json.RawMessage `json:"settings" db:"settings"`
+	Settings    string          `json:"settings" db:"settings"`
 	Enabled     bool            `json:"enabled" db:"enabled"`
 	CreatedBy   string          `json:"created_by" db:"created_by"`
 	CreatedAt   sqliteTime      `json:"created_at" db:"created_at"`
@@ -124,7 +124,7 @@ func (r *mcpServerRow) toMCPServerData() store.MCPServerData {
 		APIKey:      derefStr(r.APIKey),
 		ToolPrefix:  derefStr(r.ToolPrefix),
 		TimeoutSec:  r.TimeoutSec,
-		Settings:    r.Settings,
+		Settings:    json.RawMessage(r.Settings),
 		Enabled:     r.Enabled,
 		CreatedBy:   r.CreatedBy,
 	}
