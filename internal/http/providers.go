@@ -165,6 +165,28 @@ func (h *ProvidersHandler) registerInMemory(p *store.LLMProviderData) {
 	if p.ProviderType == store.ProviderACP {
 		return
 	}
+	// New CLI-based providers (codex_cli, copilot, opencode) — no API key needed.
+	// Register immediately like Claude CLI.
+	if p.ProviderType == store.ProviderCodexCLI || p.ProviderType == store.ProviderCopilot || p.ProviderType == store.ProviderOpenCode {
+		cliPath := p.APIBase
+		if cliPath == "" {
+			cliPath = strings.TrimSuffix(p.ProviderType, "_cli") // "codex_cli" -> "codex"
+		}
+		if _, err := exec.LookPath(cliPath); err != nil {
+			slog.Warn("cli: binary not found, skipping", "type", p.ProviderType, "path", cliPath, "error", err)
+			return
+		}
+		switch p.ProviderType {
+		case store.ProviderCodexCLI:
+			h.providerReg.RegisterForTenant(p.TenantID, providers.NewCodexCLIProvider(cliPath, providers.WithCodexCLIName(p.Name)))
+		case store.ProviderCopilot:
+			h.providerReg.RegisterForTenant(p.TenantID, providers.NewCopilotProvider(cliPath, providers.WithCopilotName(p.Name)))
+		case store.ProviderOpenCode:
+			h.providerReg.RegisterForTenant(p.TenantID, providers.NewOpenCodeProvider(cliPath, providers.WithOpenCodeName(p.Name)))
+		}
+		slog.Info("registered CLI provider from HTTP", "type", p.ProviderType, "name", p.Name)
+		return
+	}
 	// Claude CLI doesn't need an API key — register immediately
 	if p.ProviderType == store.ProviderClaudeCLI {
 		cliPath := p.APIBase // reuse APIBase field for CLI path
