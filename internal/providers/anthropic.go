@@ -156,9 +156,8 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRes
 	// Usage.ThinkingTokens and RawAssistantContent remain intact so billing
 	// and Anthropic tool-use thinking passback continue to work.
 	if resp != nil {
-		if strip, _ := req.Options[OptStripThinking].(bool); strip {
-			resp.Thinking = ""
-		}
+		// StripThinking: onChunk already handles this. Keep Thinking in stored response
+		// so reasoning content is preserved for multi-turn conversations.
 	}
 	return resp, err
 }

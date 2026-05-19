@@ -28,14 +28,9 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 		}
 	}
 
-	// Drop user-visible reasoning for models flagged as leakers (e.g. Kimi,
-	// DeepSeek-Reasoner). Usage.ThinkingTokens is preserved so billing stays
-	// correct (Phase 1 depends on this).
-	if resp != nil {
-		if strip, _ := req.Options[OptStripThinking].(bool); strip {
-			resp.Thinking = ""
-		}
-	}
+	// StripThinking only suppresses onChunk output. Thinking MUST stay in
+	// the stored response so reasoning_content can be echoed back on the next
+	// API call (DeepSeek, Kimi require this).
 
 	return resp, err
 }
