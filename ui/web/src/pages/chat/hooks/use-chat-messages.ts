@@ -108,7 +108,12 @@ export function useChatMessages(sessionKey: string, agentId: string) {
     if (!ws.isConnected || !sessionKey) { setLoading(false); return; }
     try {
       const res = await ws.call<{ messages: Message[] }>(Methods.CHAT_HISTORY, { agentId, sessionKey });
-      setSessionMessages(sessionKey, transformHistoryMessages(res.messages ?? [], mediaItems));
+      const history = transformHistoryMessages(res.messages ?? [], mediaItems);
+        // Don't clear existing messages when history is empty — preserves optimistic
+        // messages that were added before the session was persisted to the server.
+        if (history.length > 0) {
+          setSessionMessages(sessionKey, history);
+        }
     } catch { /* will retry */ } finally { setLoading(false); }
   }, [ws, agentId, sessionKey, setSessionMessages]);
 
