@@ -152,6 +152,36 @@ func SeedDefaultModels(r *InMemoryRegistry) {
 		r.Register(s)
 	}
 
+	// CLI provider models — local subprocess-based, no upstream API to query.
+	for _, s := range []ModelSpec{
+		{ID: "sonnet", Provider: "claude_cli", ContextWindow: 200_000, MaxTokens: 16_000, Reasoning: true, Vision: false, TokenizerID: "cl100k_base"},
+		{ID: "opus", Provider: "claude_cli", ContextWindow: 200_000, MaxTokens: 32_000, Reasoning: true, Vision: false, TokenizerID: "cl100k_base"},
+		{ID: "haiku", Provider: "claude_cli", ContextWindow: 200_000, MaxTokens: 8_192, Reasoning: false, Vision: false, TokenizerID: "cl100k_base"},
+	} {
+		r.Register(s)
+	}
+	for _, s := range []ModelSpec{
+		{ID: "gpt-5.4", Provider: "codex_cli", ContextWindow: 1_000_000, MaxTokens: 100_000, Reasoning: true, Vision: true, TokenizerID: "o200k_base"},
+		{ID: "gpt-5.2", Provider: "codex_cli", ContextWindow: 256_000, MaxTokens: 64_000, Reasoning: true, Vision: true, TokenizerID: "o200k_base"},
+		{ID: "gpt-4o", Provider: "codex_cli", ContextWindow: 128_000, MaxTokens: 16_384, Reasoning: false, Vision: true, TokenizerID: "o200k_base"},
+	} {
+		r.Register(s)
+	}
+	for _, s := range []ModelSpec{
+		{ID: "gpt-5.4", Provider: "copilot", ContextWindow: 1_000_000, MaxTokens: 100_000, Reasoning: true, Vision: true, TokenizerID: "o200k_base"},
+		{ID: "gpt-5.2", Provider: "copilot", ContextWindow: 256_000, MaxTokens: 64_000, Reasoning: true, Vision: true, TokenizerID: "o200k_base"},
+		{ID: "gpt-4o", Provider: "copilot", ContextWindow: 128_000, MaxTokens: 16_384, Reasoning: false, Vision: true, TokenizerID: "o200k_base"},
+	} {
+		r.Register(s)
+	}
+	for _, s := range []ModelSpec{
+		{ID: "gpt-5.4", Provider: "opencode", ContextWindow: 1_000_000, MaxTokens: 100_000, Reasoning: true, Vision: true, TokenizerID: "o200k_base"},
+		{ID: "github-copilot/claude-sonnet-4.5", Provider: "opencode", ContextWindow: 200_000, MaxTokens: 16_000, Reasoning: true, Vision: true, TokenizerID: "cl100k_base"},
+		{ID: "github-copilot/gpt-5-mini", Provider: "opencode", ContextWindow: 256_000, MaxTokens: 64_000, Reasoning: false, Vision: true, TokenizerID: "o200k_base"},
+	} {
+		r.Register(s)
+	}
+
 	// OpenAI models
 	for _, s := range []ModelSpec{
 		{ID: "gpt-5.4", Provider: "openai", ContextWindow: 1_000_000, MaxTokens: 100_000, Reasoning: true, Vision: true, TokenizerID: "o200k_base"},
