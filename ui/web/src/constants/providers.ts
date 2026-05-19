@@ -34,7 +34,10 @@ export const PROVIDER_TYPES: ProviderTypeInfo[] = [
   { value: "byteplus_coding", label: "BytePlus Coding Plan", apiBase: "https://ark.ap-southeast.bytepluses.com/api/coding/v3", placeholder: "" },
   { value: "ollama", label: "Ollama (Local)", apiBase: "http://localhost:11434/v1", placeholder: "" },
   { value: "ollama_cloud", label: "Ollama Cloud", apiBase: "https://ollama.com/v1", placeholder: "" },
-  { value: "claude_cli", label: "Claude CLI (Local)", apiBase: "", placeholder: "" },
+  { value: "claude_cli", label: "Claude CLI (Local)", apiBase: "", placeholder: "claude" },
+  { value: "codex_cli", label: "Codex CLI (Local)", apiBase: "", placeholder: "codex" },
+  { value: "copilot", label: "GitHub Copilot CLI (Local)", apiBase: "", placeholder: "copilot" },
+  { value: "opencode", label: "OpenCode CLI (Local)", apiBase: "", placeholder: "opencode" },
   { value: "acp", label: "ACP Agent (Subprocess)", apiBase: "", placeholder: "claude" },
 ];
 

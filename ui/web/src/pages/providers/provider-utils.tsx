@@ -12,6 +12,9 @@ const SPECIAL_VARIANTS: Record<string, BadgeVariant> = {
   anthropic_native: "default",
   chatgpt_oauth: "default",
   claude_cli: "outline",
+  codex_cli: "outline",
+  copilot: "outline",
+  opencode: "outline",
   acp: "outline",
 };
 
