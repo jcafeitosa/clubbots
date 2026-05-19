@@ -46,6 +46,7 @@ func wireExtraTools(
 	toolsReg.Register(tools.NewSessionStatusTool())
 	toolsReg.Register(tools.NewSessionsHistoryTool())
 	toolsReg.Register(tools.NewSessionsSendTool())
+	toolsReg.Register(tools.NewSessionSearchTool(pgStores.Sessions))
 
 	// Message tool (send to channels)
 	toolsReg.Register(tools.NewMessageTool(workspace, agentCfg.RestrictToWorkspace))
