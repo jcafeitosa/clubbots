@@ -18,13 +18,15 @@ const (
 	LevelSenior                      // complex features, mentoring, review
 	LevelStaff                       // cross-team architecture, technical strategy
 	LevelPrincipal                   // org-wide technical direction
+	LevelDistinguished               // company-wide technical strategy, external representation
 	LevelDirector                    // multi-team coordination, resource allocation
 	LevelVP                          // strategic vision, prioritization
+	LevelCTO                         // technology vision, build-vs-buy, R&D
 	LevelCEO                         // top-level decisions, external communication
 )
 
 func (l AgentLevel) String() string {
-	return [...]string{"intern", "junior", "mid", "senior", "staff", "principal", "director", "vp", "ceo"}[l]
+	return [...]string{"intern", "junior", "mid", "senior", "staff", "principal", "distinguished", "director", "vp", "cto", "ceo"}[l]
 }
 
 // AgentRole is a specialized function within the org.
@@ -43,6 +45,9 @@ const (
 	RoleDataEngineer  AgentRole = "data-engineer"
 	RoleML            AgentRole = "ml"
 	RoleUX            AgentRole = "ux"
+	RoleTechLead      AgentRole = "tech-lead"
+	RoleScrumMaster   AgentRole = "scrum-master"
+	RoleDataScientist AgentRole = "data-scientist"
 )
 
 // TeamAgent represents an agent in the hierarchy.
@@ -116,8 +121,12 @@ func (h *Hierarchy) printTree(sb *strings.Builder, agent *TeamAgent, depth int) 
 
 func levelIcon(l AgentLevel) string {
 	switch l {
-	case LevelCEO, LevelVP:
+	case LevelCEO, LevelCTO:
 		return "👑"
+	case LevelVP:
+		return "💼"
+	case LevelDistinguished:
+		return "🏆"
 	case LevelDirector:
 		return "🏢"
 	case LevelPrincipal, LevelStaff:
@@ -218,7 +227,8 @@ func (h *Hierarchy) Escalate(agentID string) string {
 func DefaultTeam() []*TeamAgent {
 	return []*TeamAgent{
 		{ID: "ceo", Name: "CEO Agent", Level: LevelCEO, Role: RolePM, Manager: "", Provider: "claude-cli", Model: "opus"},
-		{ID: "vp-eng", Name: "VP Engineering", Level: LevelVP, Role: RoleArchitect, Manager: "ceo", Provider: "claude-cli", Model: "opus"},
+		{ID: "cto", Name: "CTO Agent", Level: LevelCTO, Role: RoleArchitect, Manager: "ceo", Provider: "claude-cli", Model: "opus"},
+		{ID: "vp-eng", Name: "VP Engineering", Level: LevelVP, Role: RoleArchitect, Manager: "cto", Provider: "claude-cli", Model: "opus"},
 		{ID: "dir-platform", Name: "Director Platform", Level: LevelDirector, Role: RoleArchitect, Manager: "vp-eng", Provider: "claude-cli", Model: "sonnet"},
 		{ID: "dir-product", Name: "Director Product", Level: LevelDirector, Role: RolePM, Manager: "vp-eng", Provider: "claude-cli", Model: "sonnet"},
 		{ID: "staff-arch", Name: "Staff Architect", Level: LevelStaff, Role: RoleArchitect, Manager: "dir-platform", Provider: "claude-cli", Model: "sonnet"},
@@ -232,5 +242,11 @@ func DefaultTeam() []*TeamAgent {
 		{ID: "security-lead", Name: "Security Lead", Level: LevelSenior, Role: RoleSecurity, Manager: "dir-platform", Provider: "claude-cli", Model: "sonnet"},
 		{ID: "devops", Name: "DevOps Lead", Level: LevelMid, Role: RoleDevOps, Manager: "dir-platform", Provider: "claude-cli", Model: "sonnet"},
 		{ID: "reviewer", Name: "Code Reviewer", Level: LevelSenior, Role: RoleReviewer, Manager: "dir-platform", Provider: "claude-cli", Model: "sonnet"},
+		{ID: "dist-eng", Name: "Distinguished Engineer", Level: LevelDistinguished, Role: RoleArchitect, Manager: "cto", Provider: "claude-cli", Model: "opus"},
+		{ID: "tech-lead", Name: "Tech Lead", Level: LevelSenior, Role: RoleTechLead, Manager: "dir-platform", Provider: "claude-cli", Model: "sonnet"},
+		{ID: "ux-designer", Name: "UX Designer", Level: LevelMid, Role: RoleUX, Manager: "sr-frontend", Provider: "claude-cli", Model: "sonnet"},
+		{ID: "ml-engineer", Name: "ML Engineer", Level: LevelSenior, Role: RoleML, Manager: "dir-platform", Provider: "claude-cli", Model: "sonnet"},
+		{ID: "scrum-master", Name: "Scrum Master", Level: LevelMid, Role: RoleScrumMaster, Manager: "dir-product", Provider: "claude-cli", Model: "sonnet"},
+		{ID: "data-scientist", Name: "Data Scientist", Level: LevelMid, Role: RoleDataScientist, Manager: "dir-platform", Provider: "claude-cli", Model: "sonnet"},
 	}
 }
