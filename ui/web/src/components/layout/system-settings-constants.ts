@@ -22,6 +22,12 @@ export const EMBEDDING_MODELS: Record<string, { id: string; name: string }[]> = 
   cohere: [
     { id: "embed-v4", name: "embed-v4 (1536d native)" },
   ],
+  voyage: [
+    { id: "voyage-3-large", name: "voyage-3-large (1536d native)" },
+    { id: "voyage-3", name: "voyage-3 (1024d → 1536 via dimensions)" },
+    { id: "voyage-3-lite", name: "voyage-3-lite (512d→ 1536 via dimensions)" },
+    { id: "voyage-code-3", name: "voyage-code-3 (1536d native, code-optimized)" },
+  ],
   ollama: [
     { id: "nomic-embed-text", name: "nomic-embed-text (768d → 1536 via dimensions)" },
     { id: "mxbai-embed-large", name: "mxbai-embed-large (1024d → 1536 via dimensions)" },

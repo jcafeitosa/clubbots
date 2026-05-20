@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getApiClient } from '../../lib/api'
-import { PROVIDER_TYPES } from '../../constants/providers'
+import { PROVIDER_TYPES, NO_API_KEY_TYPES } from '../../constants/providers'
 import { slugify } from '../../lib/slug'
 import { Combobox } from '../common/Combobox'
 import type { ProviderData } from '../../types/provider'
@@ -25,7 +25,7 @@ export function ProviderStep({ existingProvider, onComplete }: ProviderStepProps
   const [error, setError] = useState('')
 
   const preset = PROVIDER_TYPES.find((t) => t.value === providerType)
-  const needsKey = preset?.needsKey ?? true
+  const needsKey = !NO_API_KEY_TYPES.has(providerType)
 
   const handleTypeChange = (value: string) => {
     setProviderType(value)

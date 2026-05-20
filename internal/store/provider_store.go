@@ -36,6 +36,7 @@ const (
 	ProviderCodexCLI        = "codex_cli"        // OpenAI Codex CLI (subprocess)
 	ProviderCopilot         = "copilot"           // GitHub Copilot CLI (subprocess)
 	ProviderOpenCode        = "opencode"          // OpenCode CLI (subprocess)
+	ProviderVoyage          = "voyage"            // Voyage AI (Anthropic's embedding partner)
 
 	// Novita AI defaults.
 	NovitaDefaultAPIBase = "https://api.novita.ai/openai"
@@ -76,6 +77,7 @@ var ValidProviderTypes = map[string]bool{
 	ProviderCodexCLI:        true,
 	ProviderCopilot:         true,
 	ProviderOpenCode:        true,
+	ProviderVoyage:          true,
 }
 
 // LLMProviderData represents an LLM provider configuration.

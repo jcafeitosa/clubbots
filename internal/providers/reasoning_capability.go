@@ -39,6 +39,36 @@ var reasoningCapabilityEntries = []reasoningCapabilityEntry{
 	{id: "gpt-5-codex-mini", capability: ReasoningCapability{Levels: []string{"low", "medium", "high"}, DefaultEffort: "medium"}},
 	{id: "gpt-5-codex", capability: ReasoningCapability{Levels: []string{"low", "medium", "high"}, DefaultEffort: "medium"}},
 	{id: "gpt-5", capability: ReasoningCapability{Levels: []string{"minimal", "low", "medium", "high"}, DefaultEffort: "medium"}},
+
+	// Anthropic extended thinking (enable_thinking + thinking_budget tokens)
+	{id: "claude-opus-4-7", capability: ReasoningCapability{Levels: []string{"low", "medium", "high", "xhigh"}, DefaultEffort: "medium"}},
+	{id: "claude-opus-4-6", capability: ReasoningCapability{Levels: []string{"low", "medium", "high", "xhigh"}, DefaultEffort: "medium"}},
+	{id: "claude-sonnet-4-6", capability: ReasoningCapability{Levels: []string{"low", "medium", "high"}, DefaultEffort: "medium"}},
+	{id: "claude-sonnet-4-5", capability: ReasoningCapability{Levels: []string{"low", "medium", "high"}, DefaultEffort: "medium"}},
+	{id: "claude-haiku-4-5", capability: ReasoningCapability{Levels: []string{"low", "medium"}, DefaultEffort: "low"}},
+
+	// Gemini thinking models
+	{id: "gemini-3.0-flash", capability: ReasoningCapability{Levels: []string{"low", "medium", "high"}, DefaultEffort: "medium"}},
+	{id: "gemini-3.0-pro", capability: ReasoningCapability{Levels: []string{"low", "medium", "high"}, DefaultEffort: "medium"}},
+	{id: "gemini-2.5-pro", capability: ReasoningCapability{Levels: []string{"low", "medium", "high"}, DefaultEffort: "medium"}},
+	{id: "gemini-2.5-flash", capability: ReasoningCapability{Levels: []string{"low", "medium", "high"}, DefaultEffort: "medium"}},
+
+	// DeepSeek reasoner
+	{id: "deepseek-reasoner", capability: ReasoningCapability{Levels: []string{"low", "medium", "high"}, DefaultEffort: "medium"}},
+	{id: "deepseek-chat", capability: ReasoningCapability{Levels: []string{"none", "low", "medium"}, DefaultEffort: "low"}},
+
+	// Qwen3 thinking models (DashScope/Bailian)
+	{id: "qwen3.6-plus", capability: ReasoningCapability{Levels: []string{"low", "medium", "high", "xhigh"}, DefaultEffort: "medium"}},
+	{id: "qwen3.5-plus", capability: ReasoningCapability{Levels: []string{"low", "medium", "high"}, DefaultEffort: "medium"}},
+	{id: "qwen3.5-flash", capability: ReasoningCapability{Levels: []string{"low", "medium", "high"}, DefaultEffort: "low"}},
+	{id: "qwen3.5-turbo", capability: ReasoningCapability{Levels: []string{"low", "medium"}, DefaultEffort: "low"}},
+	{id: "qwen3-max", capability: ReasoningCapability{Levels: []string{"low", "medium", "high"}, DefaultEffort: "medium"}},
+	{id: "qwen3-plus", capability: ReasoningCapability{Levels: []string{"low", "medium", "high"}, DefaultEffort: "medium"}},
+	{id: "qwen3-turbo", capability: ReasoningCapability{Levels: []string{"low", "medium"}, DefaultEffort: "low"}},
+
+	// Groq reasoning models
+	{id: "deepseek-r1-distill-llama-70b", capability: ReasoningCapability{Levels: []string{"low", "medium", "high"}, DefaultEffort: "medium"}},
+	{id: "llama-4-maverick", capability: ReasoningCapability{Levels: []string{"low", "medium"}, DefaultEffort: "low"}},
 }
 
 func LookupReasoningCapability(model string) *ReasoningCapability {

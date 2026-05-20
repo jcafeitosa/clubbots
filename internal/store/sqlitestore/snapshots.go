@@ -151,8 +151,9 @@ func (s *SQLiteSnapshotStore) GetTimeSeries(ctx context.Context, q store.Snapsho
 	var result []store.SnapshotTimeSeries
 	for rows.Next() {
 		var ts store.SnapshotTimeSeries
+		var bucketTimeStr string
 		if err := rows.Scan(
-			&ts.BucketTime,
+			&bucketTimeStr,
 			&ts.InputTokens, &ts.OutputTokens,
 			&ts.CacheReadTokens, &ts.CacheCreateTokens, &ts.ThinkingTokens,
 			&ts.TotalCost,
@@ -162,6 +163,10 @@ func (s *SQLiteSnapshotStore) GetTimeSeries(ctx context.Context, q store.Snapsho
 			&ts.KGEntities, &ts.KGRelations,
 		); err != nil {
 			return nil, fmt.Errorf("scan timeseries: %w", err)
+		}
+		// SQLite returns strftime() as string; parse to time.Time.
+		if t, err := parseBucketTime(bucketTimeStr); err == nil {
+			ts.BucketTime = t
 		}
 		result = append(result, ts)
 	}
@@ -301,4 +306,18 @@ func buildSnapshotWhere(ctx context.Context, q store.SnapshotQuery) (string, []a
 		return "", nil
 	}
 	return " WHERE " + strings.Join(conds, " AND "), args
+}
+
+// parseBucketTime parses a SQLite bucket_time string (from strftime or raw column)
+// into a time.Time value. SQLite returns TIMESTAMP columns as strings.
+func parseBucketTime(s string) (time.Time, error) {
+	// Try ISO format: "2026-05-20 00:00:00"
+	if t, err := time.Parse("2006-01-02 15:04:05", s); err == nil {
+		return t, nil
+	}
+	// Try RFC3339: "2026-05-20T00:00:00Z"
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, nil
+	}
+	return time.Time{}, fmt.Errorf("cannot parse bucket_time: %q", s)
 }

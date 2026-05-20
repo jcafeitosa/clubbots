@@ -39,6 +39,7 @@ export const PROVIDER_TYPES: ProviderTypeInfo[] = [
   { value: "copilot", label: "GitHub Copilot CLI (Local)", apiBase: "", placeholder: "copilot" },
   { value: "opencode", label: "OpenCode CLI (Local)", apiBase: "", placeholder: "opencode" },
   { value: "acp", label: "ACP Agent (Subprocess)", apiBase: "", placeholder: "claude" },
+  { value: "voyage", label: "Voyage AI (Embeddings)", apiBase: "https://api.voyageai.com/v1", placeholder: "" },
 ];
 
 function providerAliasName(value: ProviderAliasSource): string {

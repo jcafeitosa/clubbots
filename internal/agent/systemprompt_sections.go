@@ -742,8 +742,8 @@ func buildTeamMembersSection(members []store.TeamMemberData, teamGuidance string
 		entry := fmt.Sprintf("- %s (%s) [%s]", m.AgentKey, m.DisplayName, m.Role)
 		if m.Frontmatter != "" {
 			fm := m.Frontmatter
-			if len([]rune(fm)) > 80 {
-				fm = string([]rune(fm)[:80]) + "…"
+			if len([]rune(fm)) > 160 {
+				fm = string([]rune(fm)[:160]) + "…"
 			}
 			entry += " — " + fm
 		}
