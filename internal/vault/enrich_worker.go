@@ -483,12 +483,22 @@ func parseBatchSummaries(raw string, expected int) []string {
 		raw = strings.TrimSpace(raw)
 	}
 
+	// If not starting with [, try to extract JSON array from markdown text.
+	// LLMs (especially weaker models) often wrap JSON in explanatory text.
+	if !strings.HasPrefix(raw, "[") {
+		if start := strings.Index(raw, "["); start >= 0 {
+			if end := strings.LastIndex(raw, "]"); end > start {
+				raw = raw[start : end+1]
+			}
+		}
+	}
+
 	var results []struct {
 		Idx     int    `json:"idx"`
 		Summary string `json:"summary"`
 	}
 	if err := json.Unmarshal([]byte(raw), &results); err != nil {
-		slog.Warn("vault.enrich: parse_batch_summaries", "err", err, "raw_len", len(raw), "raw", raw)
+		slog.Warn("vault.enrich: parse_batch_summaries", "err", err, "raw_len", len(raw), "summary", raw[:min(len(raw), 200)])
 		return nil
 	}
 
