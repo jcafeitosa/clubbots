@@ -43,6 +43,8 @@ interface ProviderModelSelectProps {
   modelFilter?: string;
   /** Extra models to prepend to the dropdown (e.g. curated embedding models not returned by API). */
   extraModels?: { id: string; name: string }[];
+  /** Provider types to exclude from the selector (e.g. types that can't do embeddings). */
+  excludeProviderTypes?: string[];
 }
 
 export function ProviderModelSelect({
@@ -64,6 +66,7 @@ export function ProviderModelSelect({
   filterEmbedding,
   modelFilter,
   extraModels,
+  excludeProviderTypes,
 }: ProviderModelSelectProps) {
   const { t } = useTranslation("common");
   const { providers } = useProviders();
@@ -74,6 +77,7 @@ export function ProviderModelSelect({
       if (!p.enabled) return false;
       // Hide pool members — pool routing is handled via the owner provider
       if (poolOwnership.ownerByMember.has(p.name)) return false;
+      if (excludeProviderTypes?.includes(p.provider_type)) return false;
       if (filterEmbedding) {
         const s = p.settings as Record<string, unknown> | undefined;
         const emb = s?.embedding as { enabled?: boolean } | undefined;
@@ -81,7 +85,7 @@ export function ProviderModelSelect({
       }
       return true;
     }),
-    [providers, poolOwnership, filterEmbedding],
+    [providers, poolOwnership, filterEmbedding, excludeProviderTypes],
   );
 
   // Stable ref for callback — prevents the auto-select effect from re-running

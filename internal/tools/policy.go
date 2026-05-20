@@ -21,7 +21,7 @@ var builtinToolGroups = map[string][]string{
 	"ui":         {"browser"},
 	"automation": {"cron"},
 	"messaging":  {"message", "create_forum_topic", "list_group_members"},
-	"team":       {"team_tasks"},
+	"team":       {"team_tasks", "orchestrate"},
 	"vault":      {"vault_search", "vault_read"},
 	// Composite group: all goclaw native tools (excludes MCP/custom plugins).
 	"goclaw": {
@@ -37,7 +37,7 @@ var builtinToolGroups = map[string][]string{
 		"create_image", "create_video", "create_audio",
 		"skill_search", "skill_manage", "publish_skill", "use_skill",
 		"mcp_tool_search", "tts",
-		"team_tasks",
+		"team_tasks", "orchestrate",
 	},
 }
 

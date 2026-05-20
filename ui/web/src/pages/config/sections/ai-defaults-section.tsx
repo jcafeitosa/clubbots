@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InfoLabel } from "@/components/shared/info-label";
 import { ProviderModelSelect } from "@/components/shared/provider-model-select";
+import { NO_EMBEDDING_PROVIDER_TYPES } from "@/components/layout/system-settings-constants";
 import { SubSection, Field } from "./ai-defaults-form-controls";
 
  
@@ -176,6 +177,7 @@ export function AiDefaultsSection({ data, onSave, saving }: Props) {
             providerPlaceholder="(auto)"
             modelPlaceholder="text-embedding-3-small"
             allowEmpty
+            excludeProviderTypes={NO_EMBEDDING_PROVIDER_TYPES}
           />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label={t("agents.memory.maxResults")} tip={t("agents.memory.maxResultsTip")} type="number" value={memory.max_results} onChange={(v) => updateNested("memory", { max_results: Number(v) })} placeholder="6" />

@@ -275,7 +275,8 @@ func runGateway() {
 		}
 
 		toolsReg.Register(tools.NewSpawnTool(subagentMgr, "default", 0))
-		slog.Info("subagent system enabled", "tools", []string{"spawn"})
+		toolsReg.Register(tools.NewOrchestrateTool(subagentMgr, "default", 0))
+		slog.Info("subagent system enabled", "tools", []string{"spawn", "orchestrate"})
 	}
 
 	skillsLoader, skillSearchTool, globalSkillsDir, bundledSkillsDir, builtinSkillsDir := setupSkillsSystem(cfg, workspace, dataDir, pgStores, toolsReg, providerRegistry, msgBus)

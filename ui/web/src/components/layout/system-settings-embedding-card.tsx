@@ -23,6 +23,7 @@ interface SystemSettingsEmbeddingCardProps {
   embChunkOverlap: string;
   setEmbChunkOverlap: (v: string) => void;
   extraModels: { id: string; name: string }[];
+  excludeProviderTypes?: string[];
   onVerify: () => void;
   verifying: boolean;
   verifyResult: EmbVerifyResult | null;
@@ -34,7 +35,7 @@ export function SystemSettingsEmbeddingCard({
   embModel, setEmbModel,
   embMaxChunkLen, setEmbMaxChunkLen,
   embChunkOverlap, setEmbChunkOverlap,
-  extraModels, onVerify, verifying, verifyResult, canVerify,
+  extraModels, excludeProviderTypes, onVerify, verifying, verifyResult, canVerify,
 }: SystemSettingsEmbeddingCardProps) {
   const { t } = useTranslation("system-settings");
 
@@ -64,6 +65,7 @@ export function SystemSettingsEmbeddingCard({
           allowEmpty
           showVerify={false}
           extraModels={extraModels}
+          excludeProviderTypes={excludeProviderTypes}
           modelFilter="embed"
           providerLabel={t("embedding.provider")}
           modelLabel={t("embedding.model")}

@@ -56,3 +56,17 @@ func (l *Loop) resolvePinnedSkillsSummary(ctx context.Context) string {
 	}
 	return l.skillsLoader.BuildPinnedSummary(ctx, l.pinnedSkills)
 }
+
+// resolvePinnedSkillsContent loads full SKILL.md content for pinned skills.
+// For 1-3 pinned skills, full content is injected into the system prompt so
+// the agent has its core skills loaded without needing use_skill + read_file.
+// For 4+ pinned skills, returns empty (use the XML summary + skill_search).
+func (l *Loop) resolvePinnedSkillsContent(ctx context.Context) string {
+	if l.skillsLoader == nil || len(l.pinnedSkills) == 0 {
+		return ""
+	}
+	if len(l.pinnedSkills) > 3 {
+		return "" // too many — use summary + search instead
+	}
+	return l.skillsLoader.LoadForContext(ctx, l.pinnedSkills)
+}

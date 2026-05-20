@@ -44,11 +44,11 @@ func ResolveOrchestrationMode(ctx context.Context, agentID uuid.UUID, teamStore 
 }
 
 // orchModeDenyTools returns tool names to hide for a given orchestration mode.
-// spawn: hide delegate + team_tasks. delegate: hide team_tasks. team: hide nothing.
+// spawn: hide delegate + team_tasks + orchestrate. delegate: hide team_tasks. team: hide nothing.
 func orchModeDenyTools(mode OrchestrationMode) map[string]bool {
 	switch mode {
 	case ModeSpawn:
-		return map[string]bool{"delegate": true, "team_tasks": true}
+		return map[string]bool{"delegate": true, "team_tasks": true, "orchestrate": true}
 	case ModeDelegate:
 		return map[string]bool{"team_tasks": true}
 	default:

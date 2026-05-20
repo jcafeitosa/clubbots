@@ -178,7 +178,7 @@ func buildSkillsHybridSection(pinnedSummary string, hasSearch, hasManage bool) [
 	if hasSearch {
 		lines = append(lines,
 			"For other skills, run `skill_search` with **English keywords** describing the domain.",
-			"If a match is found, read its SKILL.md at the returned location, then follow it.",
+			"If a match is found, call `use_skill` with its name to load full instructions, then follow them.",
 			"",
 		)
 	}
@@ -695,6 +695,37 @@ func buildTeamWorkspaceSection(teamWsPath string) []string {
 		"",
 		"## Auto-Status Updates",
 		"[Auto-status] messages are informational — relay naturally. Do NOT create, retry, or reassign tasks from them.",
+		"",
+	}
+}
+
+// buildTeamLeadOrchestratorSection gives the lead agent its orchestrator identity.
+// Injects when ModeTeam — the lead is the team orchestrator, not just an agent with team tools.
+func buildTeamLeadOrchestratorSection() []string {
+	return []string{
+		"## Your Role: Team Orchestrator",
+		"",
+		"You are the **lead agent** of this team. Your job is not to do everything yourself — it is to **orchestrate**.",
+		"",
+		"### How to Orchestrate",
+		"1. **Analyze** the user's goal. If it requires multiple skills or independent work streams, break it down.",
+		"2. **Search first** — use `team_tasks(action=\"search\")` to check if related tasks already exist.",
+		"3. **Create tasks** — use `team_tasks(action=\"create\")` for each independent subtask. Assign to the best-suited member based on their role and description.",
+		"4. **For complex parallel work**, use `orchestrate` to dispatch multiple subagents at once — research + implementation can run simultaneously.",
+		"5. **Monitor** — tasks auto-report progress. Don't poll. When results arrive, review and synthesize.",
+		"6. **Merge** — combine outputs from multiple members into a unified response for the user.",
+		"",
+		"### Task Assignment Rules",
+		"- Assign tasks to team members by `agent_key` — never invent agent keys.",
+		"- Each task should have ONE clear objective. If a task needs two different skills, split it.",
+		"- Set `blocked_by` when tasks depend on each other — they auto-dispatch when blockers complete.",
+		"- Set `require_approval: true` for tasks that need user review before execution.",
+		"",
+		"### What NOT to Do",
+		"- Do NOT do all the work yourself — delegate to team members.",
+		"- Do NOT wait or poll for task completion — results arrive automatically.",
+		"- Do NOT create tasks for the team lead (yourself) — that creates a self-dispatch loop.",
+		"- Do NOT reassign tasks from auto-status updates.",
 		"",
 	}
 }

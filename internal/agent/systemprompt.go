@@ -109,6 +109,7 @@ type SystemPromptConfig struct {
 	HasMemory     bool                    // memory_search/memory_get available?
 	HasSpawn      bool                    // spawn tool available?
 	IsTeamContext bool                    // inject team sections (leader inbound OR team dispatch)
+	IsTeamLead    bool                    // agent is the team lead (orchestrator identity)
 	TeamWorkspace string                  // absolute path to team shared workspace (empty if not in team)
 	TeamMembers   []store.TeamMemberData  // team member roster for task assignment
 	TeamGuidance  string                  // edition-specific guidance from TeamActionPolicy.MemberGuidance()
@@ -119,6 +120,7 @@ type SystemPromptConfig struct {
 	HasSkillSearch      bool              // skill_search tool registered? (for search-mode prompt)
 	HasSkillManage      bool              // skill_manage tool registered + skill_evolve enabled for this agent
 	PinnedSkillsSummary string            // XML summary of pinned skills only (hybrid mode)
+	PinnedSkillsContent string           // full content of pinned skills (1-3 skills, injected inline)
 	HasMCPToolSearch    bool              // mcp_tool_search tool registered? (MCP search mode)
 	HasKnowledgeGraph   bool              // knowledge_graph_search tool registered?
 	HasMemoryExpand     bool              // memory_expand tool registered? (v3 episodic deep retrieval)
@@ -381,8 +383,12 @@ func BuildSystemPrompt(cfg SystemPromptConfig) string {
 	}
 
 	// 4. ## Skills — full + task (pinned skills use hybrid section)
-	if (isFull || isTask) && !cfg.IsBootstrap && (cfg.SkillsSummary != "" || cfg.HasSkillSearch || cfg.HasSkillManage || cfg.PinnedSkillsSummary != "") {
-		if cfg.PinnedSkillsSummary != "" {
+	if (isFull || isTask) && !cfg.IsBootstrap && (cfg.SkillsSummary != "" || cfg.HasSkillSearch || cfg.HasSkillManage || cfg.PinnedSkillsSummary != "" || cfg.PinnedSkillsContent != "") {
+		if cfg.PinnedSkillsContent != "" {
+			// Pinned skills with full content pre-loaded (1-3 skills)
+			lines = append(lines, cfg.PinnedSkillsContent)
+			lines = append(lines, "")
+		} else if cfg.PinnedSkillsSummary != "" {
 			// Hybrid mode: pinned skills inline + search for rest
 			lines = append(lines, buildSkillsHybridSection(cfg.PinnedSkillsSummary, cfg.HasSkillSearch, isFull && cfg.HasSkillManage)...)
 		} else if isTask {
@@ -394,8 +400,13 @@ func BuildSystemPrompt(cfg SystemPromptConfig) string {
 	}
 
 	// 4.1. Pinned skills — minimal/none mode standalone (pinned skills are explicitly chosen, always relevant)
-	if (isMinimal || isNone) && !cfg.IsBootstrap && cfg.PinnedSkillsSummary != "" {
-		lines = append(lines, buildPinnedSkillsMinimalSection(cfg.PinnedSkillsSummary)...)
+	if (isMinimal || isNone) && !cfg.IsBootstrap && (cfg.PinnedSkillsSummary != "" || cfg.PinnedSkillsContent != "") {
+		if cfg.PinnedSkillsContent != "" {
+			lines = append(lines, cfg.PinnedSkillsContent)
+			lines = append(lines, "")
+		} else {
+			lines = append(lines, buildPinnedSkillsMinimalSection(cfg.PinnedSkillsSummary)...)
+		}
 	}
 
 	// 4.5. ## MCP Tools — full + task + none (none: search-only)
@@ -428,6 +439,11 @@ func BuildSystemPrompt(cfg SystemPromptConfig) string {
 			Mode:            cfg.OrchMode,
 			DelegateTargets: cfg.DelegateTargets,
 		})...)
+	}
+
+	// 6.46. ## Team Lead Orchestrator — lead agent identity and orchestration workflow
+	if !isNone && !cfg.IsBootstrap && cfg.IsTeamLead {
+		lines = append(lines, buildTeamLeadOrchestratorSection()...)
 	}
 
 	// 6.5 ## Sandbox — full mode only (verbose section)
@@ -640,7 +656,8 @@ func buildSkillsSection(skillsSummary string, hasSkillSearch, hasSkillManage boo
 			"## Skills (mandatory)",
 			"",
 			"Before replying, scan `<available_skills>` below.",
-			"If a skill clearly applies, read its SKILL.md at the `<location>` path with `read_file`, then follow it.",
+			"If a skill clearly applies, call `use_skill` with its name to load full instructions — no read_file needed.",
+			"For complex/domain-specific tasks (coding, debugging, design, data, security, ops), skill_search first.",
 			"If multiple could apply, choose the most specific one. Never read more than one skill up front.",
 			"If none apply, proceed normally.",
 			"",
@@ -652,10 +669,10 @@ func buildSkillsSection(skillsSummary string, hasSkillSearch, hasSkillManage boo
 		lines = append(lines,
 			"## Skills (mandatory)",
 			"",
-			"Before replying, check if a skill applies:",
+			"For complex or domain-specific tasks, ALWAYS search first:",
 			"1. Run `skill_search` with **English keywords** describing the domain (e.g. \"weather\", \"translate\", \"github\").",
 			"   Even if the user writes in another language, always search in English.",
-			"2. If a match is found, read its SKILL.md at the returned `location` with `read_file`, then follow it.",
+			"2. If a match is found, call `use_skill` with its name to load full instructions — no read_file needed.",
 			"3. If multiple skills match, choose the most specific one. Never read more than one skill up front.",
 			"4. If no match, proceed normally.",
 			"",

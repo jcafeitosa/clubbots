@@ -82,6 +82,7 @@ type TeamSectionData struct {
 	Members       []TeamMemberEntry
 	Guidance      string
 	TeamMDContent string
+	IsLead        bool // true when this agent is the team lead (orchestrator)
 }
 
 // TeamMemberEntry is a single team member.

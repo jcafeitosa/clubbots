@@ -22,9 +22,29 @@ export const EMBEDDING_MODELS: Record<string, { id: string; name: string }[]> = 
   cohere: [
     { id: "embed-v4", name: "embed-v4 (1536d native)" },
   ],
+  ollama: [
+    { id: "nomic-embed-text", name: "nomic-embed-text (768d → 1536 via dimensions)" },
+    { id: "mxbai-embed-large", name: "mxbai-embed-large (1024d → 1536 via dimensions)" },
+    { id: "bge-m3", name: "bge-m3 (1024d → 1536 via dimensions)" },
+    { id: "all-minilm", name: "all-minilm (384d → 1536 via dimensions)" },
+  ],
+  ollama_cloud: [
+    { id: "nomic-embed-text", name: "nomic-embed-text (768d → 1536 via dimensions)" },
+    { id: "mxbai-embed-large", name: "mxbai-embed-large (1024d → 1536 via dimensions)" },
+    { id: "bge-m3", name: "bge-m3 (1024d → 1536 via dimensions)" },
+    { id: "all-minilm", name: "all-minilm (384d → 1536 via dimensions)" },
+  ],
 };
 
 export const DEFAULT_EMBEDDING_MODELS: { id: string; name: string }[] = [];
+
+/** Provider types that cannot serve embeddings (mirrors backend NoEmbeddingTypes). */
+export const NO_EMBEDDING_PROVIDER_TYPES = [
+  "anthropic_native", // x-api-key auth, no embedding models
+  "acp",
+  "claude_cli",
+  "chatgpt_oauth",
+];
 
 export interface InitState {
   embProvider: string;

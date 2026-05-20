@@ -71,6 +71,7 @@ func (b *BridgePromptBuilder) Build(cfg PromptConfig) (string, error) {
 
 	if cfg.Team {
 		spc.IsTeamContext = true
+		spc.IsTeamLead = cfg.TeamData.IsLead
 		spc.TeamWorkspace = cfg.TeamData.TeamWorkspace
 		spc.TeamGuidance = cfg.TeamData.Guidance
 		members := make([]store.TeamMemberData, len(cfg.TeamData.Members))

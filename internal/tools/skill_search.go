@@ -67,7 +67,7 @@ func (t *SkillSearchTool) ensureIndex(ctx context.Context) {
 func (t *SkillSearchTool) Name() string { return "skill_search" }
 
 func (t *SkillSearchTool) Description() string {
-	return "Search for available skills by keyword. Returns matching skills with name, description, and SKILL.md location for reading with read_file."
+	return "Search for available skills by keyword. Returns matching skills with name, description, and location. Use auto_load=true to get full content of the top result immediately — skip use_skill for the top match."
 }
 
 func (t *SkillSearchTool) Parameters() map[string]any {
@@ -81,6 +81,10 @@ func (t *SkillSearchTool) Parameters() map[string]any {
 			"max_results": map[string]any{
 				"type":        "integer",
 				"description": "Maximum number of results to return (default: 5)",
+			},
+			"auto_load": map[string]any{
+				"type":        "boolean",
+				"description": "If true, automatically loads and returns the full content of the top matching skill (default: false)",
 			},
 		},
 		"required": []string{"query"},
@@ -96,6 +100,10 @@ func (t *SkillSearchTool) Execute(ctx context.Context, args map[string]any) *Res
 	maxResults := 5
 	if mr, ok := args["max_results"].(float64); ok && int(mr) > 0 {
 		maxResults = int(mr)
+	}
+	autoLoad := false
+	if al, ok := args["auto_load"].(bool); ok {
+		autoLoad = al
 	}
 
 	// Lazy rebuild: check if skills changed since last index build
@@ -132,10 +140,19 @@ func (t *SkillSearchTool) Execute(ctx context.Context, args map[string]any) *Res
 		"count":   len(results),
 	}, "", "  ")
 
+	// Auto-load top result content if requested
+	if autoLoad && len(results) > 0 && t.loader != nil {
+		topContent, ok := t.loader.LoadSkill(ctx, results[0].Name)
+		if ok {
+			autoContent := fmt.Sprintf("[Skill loaded: %s]\n\n%s\n\nFollow the instructions above for this task.", results[0].Name, topContent)
+			return NewResult(autoContent)
+		}
+	}
+
 	// Include explicit next-step instruction in the result so the model follows through.
 	instruction := fmt.Sprintf(
-		"\n\nACTION REQUIRED: Call use_skill with name \"%s\", then read_file with path \"%s\" to read the skill instructions, then follow them.",
-		results[0].Name, results[0].Location,
+		"\n\nACTION REQUIRED: Call use_skill with name \"%s\" to load the full skill instructions, then follow them.",
+		results[0].Name,
 	)
 
 	return NewResult(string(data) + instruction)

@@ -14,7 +14,7 @@ import { useProviderVerify } from "@/pages/providers/hooks/use-provider-verify";
 import { useProviders } from "@/pages/providers/hooks/use-providers";
 import { useHttp } from "@/hooks/use-ws";
 import { toast } from "@/stores/use-toast-store";
-import { EMBEDDING_MODELS, DEFAULT_EMBEDDING_MODELS, DEFAULTS, parseBool, type InitState } from "./system-settings-constants";
+import { EMBEDDING_MODELS, DEFAULT_EMBEDDING_MODELS, NO_EMBEDDING_PROVIDER_TYPES, DEFAULTS, parseBool, type InitState } from "./system-settings-constants";
 import { SystemSettingsEmbeddingCard } from "./system-settings-embedding-card";
 import { SystemSettingsCompactionCard } from "./system-settings-compaction-card";
 import { Eye, MessageSquareText, Brain } from "lucide-react";
@@ -163,6 +163,7 @@ export function SystemSettingsModal({ open, onOpenChange }: SystemSettingsModalP
               embMaxChunkLen={embMaxChunkLen} setEmbMaxChunkLen={setEmbMaxChunkLen}
               embChunkOverlap={embChunkOverlap} setEmbChunkOverlap={setEmbChunkOverlap}
               extraModels={embExtraModels}
+              excludeProviderTypes={NO_EMBEDDING_PROVIDER_TYPES}
               onVerify={() => { if (selectedEmbProviderData) verifyEmbedding(selectedEmbProviderData.id, embModel.trim() || undefined, 1536); }}
               verifying={embVerifying} verifyResult={embResult}
               canVerify={!!selectedEmbProviderData && !!embModel.trim()}
