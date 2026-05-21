@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useWs } from "@/hooks/use-ws";
+import { useWs, useHttp } from "@/hooks/use-ws";
 import { useWsEvent } from "@/hooks/use-ws-event";
 import { Methods, Events } from "@/api/protocol";
 import type { Message } from "@/types/session";
@@ -19,12 +19,12 @@ const EMPTY_MESSAGES: ChatMessage[] = [];
  */
 export function useChatMessages(sessionKey: string, agentId: string) {
   const ws = useWs();
+  const http = useHttp();
   const messages = useChatMessagesStore((s) => sessionKey ? (s.sessions[sessionKey]?.messages ?? EMPTY_MESSAGES) : EMPTY_MESSAGES);
   const streamText = useChatMessagesStore((s) => sessionKey ? (s.sessions[sessionKey]?.streamText ?? null) : null);
   const thinkingText = useChatMessagesStore((s) => sessionKey ? (s.sessions[sessionKey]?.thinkingText ?? null) : null);
   const isRunning = useChatMessagesStore((s) => sessionKey ? (s.sessions[sessionKey]?.isRunning ?? false) : false);
 
-  const setSessionMessages = useChatMessagesStore((s) => s.setSessionMessages);
   const updateSessionMessages = useChatMessagesStore((s) => s.updateSessionMessages);
   const setSessionStream = useChatMessagesStore((s) => s.setSessionStream);
   const setSessionThinking = useChatMessagesStore((s) => s.setSessionThinking);
@@ -50,6 +50,39 @@ export function useChatMessages(sessionKey: string, agentId: string) {
   const blockRepliesRef = useRef<ChatMessage[]>([]);
   const rafPendingRef = useRef(false);
   const rafHandleRef = useRef(0);
+
+  // Agent identity cache — fetched once per agentId to tag assistant messages
+  const agentCacheRef = useRef<Record<string, { name: string; emoji: string }>>({});
+
+  const tagAgentMessage = useCallback((msg: Partial<ChatMessage>): ChatMessage => {
+    const cached = agentCacheRef.current[agentId];
+    return {
+      role: "assistant",
+      content: msg.content ?? "",
+      timestamp: msg.timestamp ?? Date.now(),
+      thinking: msg.thinking,
+      mediaItems: msg.mediaItems,
+      tool_calls: msg.tool_calls,
+      toolDetails: msg.toolDetails,
+      agentKey: agentId,
+      agentName: cached?.name ?? agentId,
+      agentEmoji: cached?.emoji ?? "🤖",
+      agentRole: "",
+    } as ChatMessage;
+  }, [agentId]);
+
+  // Fetch agent identity on agentId change
+  useEffect(() => {
+    if (!agentId || agentCacheRef.current[agentId]) return;
+    http.get<{ agents: Array<{ agent_key: string; display_name: string; emoji: string; frontmatter: string }> }>("/v1/agents")
+      .then((res) => {
+        const found = (res.agents ?? []).find((a) => a.agent_key === agentId);
+        if (found) {
+          agentCacheRef.current[agentId] = { name: found.display_name || found.agent_key, emoji: found.emoji || "🤖" };
+        }
+      })
+      .catch(() => {});
+  }, [agentId, http]);
 
   // Add a local message optimistically.
   // `key` is optional: callers that know the target session key (e.g. new-chat
@@ -103,19 +136,44 @@ export function useChatMessages(sessionKey: string, agentId: string) {
     rafPendingRef.current = false;
   }, [sessionKey, setTeamTasks, setSessionStream, setSessionThinking, setSessionRunning]);
 
-  // Load history
-  const loadHistory = useCallback(async (mediaItems?: MediaItem[]) => {
-    if (!ws.isConnected || !sessionKey) { setLoading(false); return; }
+  // Load history from server, merging with existing local messages.
+  // Uses updateSessionMessages (merge) instead of setSessionMessages (replace) to
+  // prevent race conditions: server may not have persisted the last message yet,
+  // and replacing the entire array would cause messages to disappear mid-conversation.
+  const loadHistory = useCallback(async (mediaItems?: MediaItem[], retryCount = 0) => {
+    if (!sessionKey) { setLoading(false); return; }
+    // WS might not be connected yet on page load — retry after delay
+    if (!ws.isConnected) {
+      if (retryCount < 5) setTimeout(() => loadHistory(mediaItems, retryCount + 1), 500);
+      return;
+    }
     try {
       const res = await ws.call<{ messages: Message[] }>(Methods.CHAT_HISTORY, { agentId, sessionKey });
       const history = transformHistoryMessages(res.messages ?? [], mediaItems);
-        // Don't clear existing messages when history is empty — preserves optimistic
-        // messages that were added before the session was persisted to the server.
-        if (history.length > 0) {
-          setSessionMessages(sessionKey, history);
+      if (history.length === 0) {
+        setLoading(false);
+        // Server might not have persisted yet — retry once
+        if (retryCount < 2) setTimeout(() => loadHistory(mediaItems, retryCount + 1), 800);
+        return;
+      }
+      updateSessionMessages(sessionKey, (prev) => {
+        const seen = new Map<string, ChatMessage>();
+        for (const m of prev) {
+          const k = m.role + '|' + (m.content?.slice(0, 60) ?? '') + '|' + Math.round((m.timestamp ?? 0) / 5000);
+          seen.set(k, m);
         }
-    } catch { /* will retry */ } finally { setLoading(false); }
-  }, [ws, agentId, sessionKey, setSessionMessages]);
+        for (const h of history) {
+          const k = h.role + '|' + (h.content?.slice(0, 60) ?? '') + '|' + Math.round((h.timestamp ?? 0) / 5000);
+          if (!seen.has(k)) seen.set(k, h);
+        }
+        const merged = Array.from(seen.values());
+        merged.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+        return merged;
+      });
+    } catch {
+      if (retryCount < 3) setTimeout(() => loadHistory(mediaItems, retryCount + 1), 1000);
+    } finally { setLoading(false); }
+  }, [ws, agentId, sessionKey, updateSessionMessages]);
 
   // Load history + restore running state when session changes
   useEffect(() => {
@@ -260,9 +318,15 @@ export function useChatMessages(sessionKey: string, agentId: string) {
           const mediaItems: MediaItem[] | undefined = rawMedia?.length
             ? rawMedia.map((m) => ({ path: toFileUrl(m.path), mimeType: m.content_type ?? "application/octet-stream", fileName: m.path.split("?")[0]?.split("/").pop() ?? "file", size: m.size, kind: mediaKindFromMime(m.content_type ?? "") }))
             : undefined;
-          if (streamed && !hadTools) {
-            updateSessionMessages(sessionKeyRef.current, (prev) => [...prev, { role: "assistant", content: streamed, thinking, timestamp: Date.now(), mediaItems }]);
-          } else { loadHistory(mediaItems); }
+          // Always append streamed content to local state first (prevents flicker/blank).
+          // Then load history from server to fill in tool results and any server-side messages.
+          // Never replace local messages — only merge with server history.
+          if (streamed) {
+            updateSessionMessages(sessionKeyRef.current, (prev) => [...prev, tagAgentMessage({ content: streamed, thinking, timestamp: Date.now(), mediaItems })]);
+          }
+          if (hadTools || mediaItems?.length) {
+            loadHistory(mediaItems);
+          }
           break;
         }
         case "run.failed": {
@@ -278,7 +342,7 @@ export function useChatMessages(sessionKey: string, agentId: string) {
           setActivity(null);
           blockRepliesRef.current = [];
           setBlockReplies([]);
-          updateSessionMessages(sessionKeyRef.current, (prev) => [...prev, { role: "assistant", content: `Error: ${event.payload?.error ?? "Unknown error"}`, timestamp: Date.now() }]);
+          updateSessionMessages(sessionKeyRef.current, (prev) => [...prev, tagAgentMessage({ content: `Error: ${event.payload?.error ?? "Unknown error"}`, timestamp: Date.now() })]);
           break;
         }
         case "run.cancelled": {
@@ -297,8 +361,9 @@ export function useChatMessages(sessionKey: string, agentId: string) {
           blockRepliesRef.current = [];
           setBlockReplies([]);
           if (streamed) {
-            updateSessionMessages(sessionKeyRef.current, (prev) => [...prev, { role: "assistant", content: streamed, timestamp: Date.now() }]);
-          } else { loadHistory(); }
+            updateSessionMessages(sessionKeyRef.current, (prev) => [...prev, tagAgentMessage({ content: streamed, timestamp: Date.now() })]);
+          }
+          loadHistory(); // merge server history, never replace
           break;
         }
       }

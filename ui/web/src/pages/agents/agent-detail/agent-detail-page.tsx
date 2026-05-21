@@ -16,6 +16,7 @@ import { SummoningModal } from "../summoning-modal";
 import { ConfirmDeleteDialog } from "@/components/shared/confirm-delete-dialog";
 import { DetailPageSkeleton } from "@/components/shared/loading-skeleton";
 import { agentDisplayName } from "./agent-display-utils";
+import { AgentWorkflowTab } from "./agent-workflow-tab";
 import { SystemPromptDialog } from "./system-prompt-dialog";
 
 const AgentAdvancedDialog = lazy(() =>
@@ -82,6 +83,7 @@ export function AgentDetailPage({ agentId, onBack }: AgentDetailPageProps) {
               <TabsTrigger value="permissions">{t("detail.tabs.permissions")}</TabsTrigger>
               <TabsTrigger value="evolution">{t("detail.tabs.evolution")}</TabsTrigger>
               <TabsTrigger value="hooks">{t("detail.tabs.hooks")}</TabsTrigger>
+              <TabsTrigger value="workflow">⚡ {t("detail.tabs.workflow", "Workflow")}</TabsTrigger>
               {agent.agent_type === "predefined" && (
                 <TabsTrigger value="instances">{t("detail.tabs.instances")}</TabsTrigger>
               )}
@@ -131,6 +133,10 @@ export function AgentDetailPage({ agentId, onBack }: AgentDetailPageProps) {
                 initialCreateOpen={hooksCreateOpen}
                 onCreateOpenChange={setHooksCreateOpen}
               />
+            </TabsContent>
+
+            <TabsContent value="workflow" className="mt-4">
+              <AgentWorkflowTab agent={agent} />
             </TabsContent>
 
             {agent.agent_type === "predefined" && (

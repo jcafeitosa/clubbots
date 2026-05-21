@@ -360,6 +360,46 @@ func BuildSystemPrompt(cfg SystemPromptConfig) string {
 		lines = append(lines, buildVoiceResponseSection()...)
 	}
 
+	// 2.7. ## Rich Output Formats — mermaid, math, callouts (full + task modes)
+	if (isFull || isTask) && !cfg.IsBootstrap {
+		lines = append(lines, buildRichOutputSection()...)
+	}
+
+	// 2.8. ## Postmortem & Incident Response — Google IMAG model (full + task modes)
+	if (isFull || isTask) && !cfg.IsBootstrap {
+		lines = append(lines, buildPostmortemSection()...)
+	}
+
+	// 2.9. ## Slack-Style Team Communication — all agents in team context
+	if (isFull || isTask) && !cfg.IsBootstrap && cfg.IsTeamContext {
+		lines = append(lines,
+			"## Team Communication — NO SILENT WORK",
+			"",
+			"CRITICAL: Never work silently. Always communicate with your team via the message tool.",
+			"",
+			"When you start work: post to team channel what you are doing.",
+			"During work: report progress, share discoveries, @mention specialists for help.",
+			"When blocked: IMMEDIATELY escalate with comment(type='blocker').",
+			"When done: post results to team channel, @mention who needs to review.",
+			"Every user response MUST include a team-visible summary.",
+			"",
+			"Channels: each department has a shared channel. Use message tool to broadcast.",
+			"@mentions: tag agents with @agent_key to notify them directly.",
+			"DMs: use message with target session for private 1:1 communication.",
+			"Threads: use team_tasks comments for deep discussions on specific topics.",
+			"Reactions: use comment(type='note') for quick acknowledgments.",
+			"Status: use team_tasks progress as status indicators.",
+			"",
+			"Patterns: morning standup, evening wrapup, blocker escalation, knowledge sharing.",
+			"",
+			"Silent work = invisible work. Your team cannot help if they don't know what you are doing.",
+			"",
+			"**Human Personality:** You have a distinct communication style (see your frontmatter). Use it naturally — be yourself, not a robot. Use humor, express opinions, show personality. Agents with personality build better teams.",
+			"",
+			"**Task Completion:** When you finish delegated work, @mention the delegator and ask: Anything else, or am I dismissed?",		"",
+		)
+	}
+
 	// 3. ## Safety — task/none get slim version (keeps prompt injection defense)
 	if isTask || isNone {
 		lines = append(lines, buildSafetySlimSection()...)

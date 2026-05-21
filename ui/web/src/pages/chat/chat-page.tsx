@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams, useNavigate } from "react-router";
-import { Eye, PanelLeftOpen } from "lucide-react";
+import { Eye, PanelLeftOpen, Hash } from "lucide-react";
 import { useAuthStore } from "@/stores/use-auth-store";
 import { useIsMobile } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
@@ -10,12 +10,12 @@ import { ChatThread } from "./chat-thread";
 import { ChatInput, type AttachedFile } from "@/components/chat/chat-input";
 import { ChatTopBar } from "@/components/chat/chat-top-bar";
 import { DropZone } from "@/components/chat/drop-zone";
-import { AgentPickerPrompt } from "@/components/chat/agent-picker-prompt";
 import { useChatSessions } from "./hooks/use-chat-sessions";
 import { useChatMessages } from "./hooks/use-chat-messages";
 import { useChatSend } from "./hooks/use-chat-send";
 import { isOwnSession, parseSessionKey } from "@/lib/session-key";
 import { useVirtualKeyboard } from "@/hooks/use-virtual-keyboard";
+import { AgentSelector } from "@/components/chat/agent-selector";
 import { TaskPanel } from "@/components/chat/task-panel";
 
 export function ChatPage() {
@@ -31,13 +31,25 @@ export function ChatPage() {
   // sessionKey derived from URL — single source of truth, no separate state
   const sessionKey = urlSessionKey ?? "";
 
-  // Fallback agent ID used only when URL has no session key
-  const [agentIdFallback, setAgentIdFallback] = useState("");
+  // CEO is the default orchestrator agent for #general channel
+  const CEO_KEY = "ceo";
+  const [agentIdFallback, setAgentIdFallback] = useState(CEO_KEY);
+  const [activeChannel, setActiveChannel] = useState("general");
 
-  // Agent is confirmed when URL has a session (agentId parsed) or user explicitly picked one
+  // Channel → Agent mapping: each channel has a lead agent
+  const channelAgentMap: Record<string, string> = {
+    general: CEO_KEY, executive: CEO_KEY,
+    platform: "dir-platform", backend: "backend-lead", frontend: "frontend-lead",
+    "ai-research": "vp-ai", "cloud-infra": "vp-infra", security: "ciso",
+    "data-intel": "cdo", "product-design": "cpo", "fintech-crypto": "fintech-lead",
+    "qa-release": "dir-qa", devrel: "dir-devrel", "saas-core": "saas-lead",
+    "modern-web": "modern-stack-lead", "github-cicd": "github-lead",
+  };
+
+  // Agent is confirmed: CEO is always available for #general
   const agentConfirmed = !!urlSessionKey || !!agentIdFallback;
 
-  // Derive agentId from URL (source of truth), fallback to state when no session
+  // Derive agentId from URL, fallback to channel-based agent, fallback to CEO
   const agentId = useMemo(() => {
     if (urlSessionKey) {
       const { agentId: parsed } = parseSessionKey(urlSessionKey);
@@ -46,6 +58,13 @@ export function ChatPage() {
     return agentIdFallback;
   }, [urlSessionKey, agentIdFallback]);
 
+  // When channel changes, update the agent
+  const handleChannelSelect = (channelId: string) => {
+    setActiveChannel(channelId);
+    const leadAgent = channelAgentMap[channelId] || CEO_KEY;
+    setAgentIdFallback(leadAgent);
+  };
+
   const {
     sessions,
     loading: sessionsLoading,
@@ -53,6 +72,19 @@ export function ChatPage() {
     buildNewSessionKey,
     deleteSession,
   } = useChatSessions(agentId);
+
+  // Auto-restore last session on page load (no URL session key)
+  useEffect(() => {
+    if (!urlSessionKey && !sessionsLoading && sessions.length > 0) {
+      const existing = sessions.find((s) => {
+        const { agentId: parsed } = parseSessionKey(s.key);
+        return parsed === agentIdFallback;
+      });
+      if (existing) {
+        navigate(`/chat/${encodeURIComponent(existing.key)}`, { replace: true });
+      }
+    }
+  }, [urlSessionKey, sessionsLoading, sessions, agentIdFallback, navigate]);
 
   const {
     messages,
@@ -195,14 +227,14 @@ export function ChatPage() {
             )}
           >
             <ChatSidebar
-              agentId={agentId}
-              onAgentChange={handleAgentChange}
               sessions={sessions}
               sessionsLoading={sessionsLoading}
               activeSessionKey={sessionKey}
               onSessionSelect={handleSessionSelectMobile}
               onDeleteSession={handleDeleteSession}
               onNewChat={handleNewChatMobile}
+              activeChannel={activeChannel}
+              onChannelSelect={handleChannelSelect}
             />
           </div>
         </>
@@ -216,6 +248,8 @@ export function ChatPage() {
           onSessionSelect={handleSessionSelect}
           onDeleteSession={handleDeleteSession}
           onNewChat={handleNewChat}
+          activeChannel={activeChannel}
+          onChannelSelect={handleChannelSelect}
         />
       )}
 
@@ -243,6 +277,7 @@ export function ChatPage() {
             onToggleTaskPanel={() => setTaskPanelOpen((v) => !v)}
             taskPanelOpen={taskPanelOpen}
             session={sessions.find((s) => s.key === sessionKey) ?? null}
+            channelName={activeChannel}
           />
         </div>
 
@@ -273,17 +308,26 @@ export function ChatPage() {
               <Eye className="h-4 w-4" />
               {t("readOnly")}
             </div>
-          ) : !agentConfirmed ? (
-            <AgentPickerPrompt onSelect={handleAgentChange} />
           ) : (
-            <ChatInput
-              onSend={handleSend}
-              onAbort={handleAbort}
-              isBusy={isBusy}
-              disabled={!connected}
-              files={files}
-              onFilesChange={setFiles}
-            />
+            <div className="mx-3 mb-3 rounded-xl border bg-muted/30 shadow-sm">
+              {/* Top bar: agent + channel + context */}
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-border/40">
+                <span className="flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/10 rounded-md px-2 py-0.5">
+                  <Hash className="h-3 w-3" />{activeChannel}
+                </span>
+                <span className="text-xs text-muted-foreground">→</span>
+                <AgentSelector value={agentId} onChange={handleAgentChange} />
+              </div>
+              {/* Input area */}
+              <ChatInput
+                onSend={handleSend}
+                onAbort={handleAbort}
+                isBusy={isBusy}
+                disabled={!connected}
+                files={files}
+                onFilesChange={setFiles}
+              />
+            </div>
           )}
         </DropZone>
       </div>

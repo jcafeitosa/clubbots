@@ -46,6 +46,11 @@ export interface ChatMessage extends Message {
   isNotification?: boolean;
   notificationType?: string;
   mediaItems?: MediaItem[];
+  /** Agent identity for display in chat bubbles */
+  agentKey?: string;
+  agentName?: string;
+  agentEmoji?: string;
+  agentRole?: string;
 }
 
 /** Agent event payload from WS event "agent" */

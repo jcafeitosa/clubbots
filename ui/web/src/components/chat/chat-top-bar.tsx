@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Loader2, Bot, Users, PanelRightOpen, PanelRightClose } from "lucide-react";
+import { Loader2, Bot, Users, PanelRightOpen, PanelRightClose, Hash } from "lucide-react";
 import { useHttp } from "@/hooks/use-ws";
 import { useAuthStore } from "@/stores/use-auth-store";
 import type { RunActivity, ActiveTeamTask } from "@/types/chat";
@@ -17,6 +17,8 @@ interface ChatTopBarProps {
   taskPanelOpen?: boolean;
   /** Current session — when provided, the bar renders a context-usage badge. */
   session?: SessionInfo | null;
+  /** Active Slack-like channel name (e.g. "general", "platform") */
+  channelName?: string;
 }
 
 const phaseLabels: Record<RunActivity["phase"], string> = {
@@ -28,7 +30,7 @@ const phaseLabels: Record<RunActivity["phase"], string> = {
   leader_processing: "Processing team results…",
 };
 
-export function ChatTopBar({ agentId, isRunning, isBusy, activity, teamTasks, onToggleTaskPanel, taskPanelOpen, session }: ChatTopBarProps) {
+export function ChatTopBar({ agentId, isRunning, isBusy, activity, teamTasks, onToggleTaskPanel, taskPanelOpen, session, channelName }: ChatTopBarProps) {
   const http = useHttp();
   const { t } = useTranslation("chat");
   const connected = useAuthStore((s) => s.connected);
@@ -84,6 +86,11 @@ export function ChatTopBar({ agentId, isRunning, isBusy, activity, teamTasks, on
   return (
     <div className="flex items-center justify-between border-b px-4 py-1.5">
       <div className="flex items-center gap-2">
+        {channelName && (
+          <span className="flex items-center gap-1 text-sm font-semibold text-primary">
+            <Hash className="h-3.5 w-3.5" />{channelName}
+          </span>
+        )}
         {emoji ? (
           <span className="text-base">{emoji}</span>
         ) : (

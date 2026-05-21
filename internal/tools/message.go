@@ -40,7 +40,7 @@ func (t *MessageTool) SetChannelTenantChecker(c ChannelTenantChecker) { t.tenant
 
 func (t *MessageTool) Name() string { return "message" }
 func (t *MessageTool) Description() string {
-	return "Send a message to a channel (Telegram, Discord, Slack, Zalo, Feishu/Lark, WhatsApp, etc.). In a DM/group, omit `target` to reply to the current chat — DO NOT set a different target unless the user explicitly asked you to forward (then set `forward=true` + `forward_reason` quoting the request). In cron/heartbeat/subagent/team contexts, set `target` per job spec."
+	return "Send a message to a channel or another agent. Supports @mentions (@agent_key) to tag team members, @channel for team-wide announcements, and direct messaging. Use for: team communication, standups, announcements, cross-team coordination, and Slack-style collaboration. In a DM/group, omit `target` to reply to the current chat — DO NOT set a different target unless the user explicitly asked you to forward (then set `forward=true` + `forward_reason` quoting the request)."
 }
 
 func (t *MessageTool) Parameters() map[string]any {
